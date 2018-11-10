@@ -69,7 +69,7 @@ namespace Scharfrichter.Codec.Archives
                 int index = sampleMap[i];
                 if (index != 0)
                 {
-                    chart.Tags["WAV" + Util.ConvertToBMEString(i, 2)] = Util.ConvertToBMEString(index, 4) + ".wav";
+                    chart.Tags["WAV" + Util.ConvertToBMEString(i, 2)] = "sounds\\" + Util.ConvertToBMEString(index, 4) + ".wav";
                 }
             }
         }
@@ -414,7 +414,7 @@ namespace Scharfrichter.Codec.Archives
                     }
                     headerWriter.WriteLine(BGAstringData);
                 }
-                headerWriter.WriteLine("");
+                headerWriter.WriteLine("#PREVIEW preview.wav");
                 headerWriter.WriteLine("");
                 headerWriter.WriteLine("");
                 headerWriter.WriteLine("*---------------------- MAIN DATA FIELD");

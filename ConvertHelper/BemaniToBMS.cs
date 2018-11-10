@@ -67,6 +67,12 @@ namespace ConvertHelper
                     string filename = args[i];
 
                     string IIDXDBName = Path.GetFileNameWithoutExtension(filename);
+                    bool isPre2DX = false; 
+                    if (IIDXDBName.Contains("pre"))
+                    {
+                        isPre2DX = true;
+                        IIDXDBName = IIDXDBName.Substring(0, 5);
+                    }
                     while (IIDXDBName.StartsWith("0"))
                         IIDXDBName = IIDXDBName.Substring(1);
 
@@ -112,10 +118,10 @@ namespace ConvertHelper
                                 string title = "";
                                 if (db[IIDXDBName]["TITLE"] != "")
                                 {
-                                    volume = int.Parse(db[IIDXDBName]["VOLUME"]) / 127;
+                                    volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
                                     title = db[IIDXDBName]["TITLE"];
                                 }
-                                ConvertSounds(archive.Sounds, filename, volume, output, title);
+                                ConvertSounds(archive.Sounds, filename, volume, output, title, isPre2DX);
                             }
                             break;
                         case @".CS":
@@ -209,6 +215,7 @@ namespace ConvertHelper
                     bms.Charts[0].Tags["PLAYER"] = "3";
                 else
                     bms.Charts[0].Tags["PLAYER"] = "1";
+     
 
                 // replace prohibited characters
                 name = nameReplace(name);
@@ -267,7 +274,7 @@ namespace ConvertHelper
             }
         }
 
-        static public void ConvertSounds(Sound[] sounds, string filename, float volume, string outputFolder = "", string nameInfo = "")
+        static public void ConvertSounds(Sound[] sounds, string filename, float volume, string outputFolder = "", string nameInfo = "", bool isPre2DX = false)
         {
             string name;
             if (nameInfo.Length == 0)
@@ -279,16 +286,23 @@ namespace ConvertHelper
                 name = nameReplace(nameInfo);
             }
             string targetPath = Path.Combine(outputFolder, name);
+            SafeCreateDirectory(targetPath);
 
-            if (!Directory.Exists(targetPath))
-                Directory.CreateDirectory(targetPath);
-
-            int count = sounds.Length;
-
-            for (int j = 0; j < count; j++)
+            if (isPre2DX)
             {
-                int sampleIndex = j + 1;
-                sounds[j].WriteFile(Path.Combine(targetPath, Scharfrichter.Codec.Util.ConvertToBMEString(sampleIndex, 4) + @".wav"), volume);
+                sounds[0].WriteFile(Path.Combine(targetPath, @"preview" + @".wav"), volume);
+            }
+            else
+            {
+                targetPath += "\\sounds";
+                SafeCreateDirectory(targetPath);
+                int count = sounds.Length;
+
+                for (int j = 0; j < count; j++)
+                {
+                    int sampleIndex = j + 1;
+                    sounds[j].WriteFile(Path.Combine(targetPath, Scharfrichter.Codec.Util.ConvertToBMEString(sampleIndex, 4) + @".wav"), volume);
+                }
             }
         }
 

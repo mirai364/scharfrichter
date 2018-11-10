@@ -341,6 +341,7 @@ namespace Scharfrichter.Codec.Archives
 
         public void Write(Stream target, bool enableBackspinScratch)
         {
+            int DelayPoint = 0;
             Dictionary<int, Fraction> bpmMap = new Dictionary<int, Fraction>();
             BinaryWriter writer = new BinaryWriter(target, Encoding.GetEncoding(932));
             Chart chart = charts[0];
@@ -364,9 +365,53 @@ namespace Scharfrichter.Codec.Archives
             foreach (KeyValuePair<string, string> tag in chart.Tags)
             {
                 if (tag.Value != null && tag.Value.Length > 0)
+                {
+                    if (tag.Key == "VIDEO" || tag.Key == "VIDEODELAY")
+                    {
+                        continue;
+                    }
                     headerWriter.WriteLine("#" + tag.Key + " " + tag.Value);
+                }
                 else
+                {
                     headerWriter.WriteLine("#" + tag.Key);
+                }
+            }
+
+            if (chart.Tags.ContainsKey("VIDEO"))
+            {
+                headerWriter.WriteLine("");
+                headerWriter.WriteLine("*---------------------- EXPANSION FIELD");
+                headerWriter.WriteLine("#BMP01 " + chart.Tags["VIDEO"] + ".wmv");
+                if (chart.Tags.ContainsKey("VIDEODELAY"))
+                {
+                    double videoDelay = Int32.Parse(chart.Tags["VIDEODELAY"]);
+                    if (videoDelay < 0)
+                    {
+                        videoDelay *= -1;
+                        DelayPoint = 2;
+                    }
+                    int section = (int)Math.Round(videoDelay * 192 * 0.008517663865, MidpointRounding.AwayFromZero);
+                    string BGAstringData = "#00004:";
+                    for (int i = 0; i < 192; i++)
+                    {
+                        if (section == i)
+                        {
+                            BGAstringData += "01";
+                        }
+                        else
+                        {
+                            BGAstringData += "00";
+                        }
+
+                    }
+                    headerWriter.WriteLine(BGAstringData);
+                }
+                headerWriter.WriteLine("");
+                headerWriter.WriteLine("");
+                headerWriter.WriteLine("");
+                headerWriter.WriteLine("*---------------------- MAIN DATA FIELD");
+                headerWriter.WriteLine("");
             }
 
             chart.ClearUsed();
@@ -401,7 +446,9 @@ namespace Scharfrichter.Codec.Archives
                     {
                         case 00:
                             measureEntries.Clear();
-                            measureString = currentMeasure.ToString();
+
+                            int tmpCurrentMeasure = currentMeasure + DelayPoint;
+                            measureString = tmpCurrentMeasure.ToString();
                             while (measureString.Length < 3)
                                 measureString = "0" + measureString;
 
@@ -680,7 +727,8 @@ namespace Scharfrichter.Codec.Archives
             {
                 if ((double)ml.Value != 1)
                 {
-                    string line = ml.Key.ToString();
+                    int tmpCurrentMeasure = ml.Key + DelayPoint;
+                    string line = tmpCurrentMeasure.ToString();
                     while (line.Length < 3)
                         line = "0" + line;
 

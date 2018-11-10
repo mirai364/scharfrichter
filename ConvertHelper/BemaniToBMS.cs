@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace ConvertHelper
 {
@@ -87,6 +88,8 @@ namespace ConvertHelper
                                             chart.Tags["TITLE"] = db[IIDXDBName]["TITLE"];
                                             chart.Tags["ARTIST"] = db[IIDXDBName]["ARTIST"];
                                             chart.Tags["GENRE"] = db[IIDXDBName]["GENRE"];
+                                            chart.Tags["VIDEO"] = db[IIDXDBName]["VIDEO"];
+                                            chart.Tags["VIDEODELAY"] = db[IIDXDBName]["VIDEODELAY"];
                                             if (j < 6)
                                                 chart.Tags["PLAYLEVEL"] = db[IIDXDBName]["DIFFICULTYSP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
                                             else if (j < 12)
@@ -103,7 +106,7 @@ namespace ConvertHelper
                             {
                                 Console.WriteLine("Converting Samples");
                                 Bemani2DX archive = Bemani2DX.Read(source);
-                                ConvertSounds(archive.Sounds, filename, 0.6f);
+                                ConvertSounds(archive.Sounds, filename, 0.6f, db[IIDXDBName]["TITLE"]);
                             }
                             break;
                         case @".CS":
@@ -199,6 +202,11 @@ namespace ConvertHelper
                 name = name.Replace("/", "_");
                 name = name.Replace("?", "_");
                 name = name.Replace("\\", "_");
+                name = name.Replace("*", "_");
+
+                string dirPath = "C:\\BMSconverter\\DATA\\" + name;
+
+                string BGA = chart.Tags["VIDEO"];
 
                 if (title != null && title.Length > 0)
                 {
@@ -209,7 +217,19 @@ namespace ConvertHelper
                     name += " [" + title + "]";
                 }
 
-                string output = Path.Combine(Path.GetDirectoryName(filename), @"@" + name + ".bms");
+                SafeCreateDirectory(dirPath);
+                string output = Path.Combine(dirPath, @"@" + name + ".bms");
+
+                string movFolder = "E:\\Game\\beatmania IIDX 25 CANNON BALLERS\\data\\movie\\" + BGA + ".wmv";
+                if (System.IO.File.Exists(movFolder))
+                {
+                    string copyPath = dirPath + "\\" + BGA + ".wmv";
+                    if (!System.IO.File.Exists(copyPath))
+                    {
+                        Console.WriteLine(copyPath);
+                        File.Copy(movFolder, copyPath);
+                    }
+                }
 
                 if (map == null)
                     bms.GenerateSampleMap();
@@ -234,10 +254,24 @@ namespace ConvertHelper
             }
         }
 
-        static public void ConvertSounds(Sound[] sounds, string filename, float volume)
+        static public void ConvertSounds(Sound[] sounds, string filename, float volume, string nameInfo = "")
         {
-            string name = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
-            string targetPath = Path.Combine(Path.GetDirectoryName(filename), name);
+            string name;
+            if (nameInfo == "")
+            {
+                name = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
+            }
+            else
+            {
+                nameInfo = nameInfo.Replace(":", "：");
+                nameInfo = nameInfo.Replace("/", "_");
+                nameInfo = nameInfo.Replace("?", "_");
+                nameInfo = nameInfo.Replace("\\", "_");
+                nameInfo = nameInfo.Replace("*", "_");
+
+                name = nameInfo;
+            }
+            string targetPath = Path.Combine("C:\\BMSconverter\\DATA\\", name);
 
             if (!Directory.Exists(targetPath))
                 Directory.CreateDirectory(targetPath);
@@ -255,6 +289,15 @@ namespace ConvertHelper
         {
             Configuration config = Configuration.ReadFile(databaseFileName);
             return config;
+        }
+
+        public static DirectoryInfo SafeCreateDirectory(string path)
+        {
+            if (Directory.Exists(path))
+            {
+                return null;
+            }
+            return Directory.CreateDirectory(path);
         }
     }
 }

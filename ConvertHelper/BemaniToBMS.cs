@@ -106,7 +106,16 @@ namespace ConvertHelper
                             {
                                 Console.WriteLine("Converting Samples");
                                 Bemani2DX archive = Bemani2DX.Read(source);
-                                ConvertSounds(archive.Sounds, filename, 0.6f, config["BMS"]["Output"], db[IIDXDBName]["TITLE"]);
+
+                                string output = config["BMS"]["Output"];
+                                float volume = 0.6f;
+                                string title = "";
+                                if (db[IIDXDBName]["TITLE"] != "")
+                                {
+                                    volume = int.Parse(db[IIDXDBName]["VOLUME"]) / 127;
+                                    title = db[IIDXDBName]["TITLE"];
+                                }
+                                ConvertSounds(archive.Sounds, filename, volume, output, title);
                             }
                             break;
                         case @".CS":

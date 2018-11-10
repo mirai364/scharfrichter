@@ -57,7 +57,8 @@ WIP, assume it doesn't work.
 Very limited testing- it might fail on IFS files from games that aren't IIDX.
 
 ### IIDXDBGenerator
-WIP, assume it doesn't work.
+Drag & Drop your music_data.bin
+If there is added to the read data, add data to onfig/BeatmaniaDB.txt
 
 ### LZDecompress, LZSS2Decompress
 Unlikely these will ever be needed, but they hook into the core decompression functionality.

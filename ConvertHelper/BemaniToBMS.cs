@@ -240,7 +240,8 @@ namespace ConvertHelper
                 {
                     try
                     {
-                        bms.Charts[0].QuantizeNoteOffsets(quantizeNotes);
+                        bms.Charts[0].quantizeNotes = quantizeNotes;
+                        bms.Charts[0].QuantizeNoteOffsets();
                     }
                     catch (Exception)
                     {

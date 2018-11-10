@@ -14,6 +14,8 @@ namespace Scharfrichter.Codec.Charts
         public Fraction DefaultBPM = new Fraction(0, 1);
         public Fraction TickRate = new Fraction(0, 1);
 
+        public int quantizeNotes { get; set; }
+
 
         // Add judgement entries to the list. It's unsure if these are needed, but
         // it can be used if there are compatibility issues with converted arcade data.
@@ -469,8 +471,9 @@ namespace Scharfrichter.Codec.Charts
 
         // quantize Metric note offsets. This is useful for reducing the size of a
         // converted BMS file.
-        public void QuantizeNoteOffsets(int quantizeValue)
+        public void QuantizeNoteOffsets()
         {
+            int quantizeValue = this.quantizeNotes;
             // verify all required metric info is present
             foreach (Entry entry in entries)
                 if (!entry.MetricOffsetInitialized)

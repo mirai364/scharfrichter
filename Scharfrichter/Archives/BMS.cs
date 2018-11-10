@@ -391,9 +391,9 @@ namespace Scharfrichter.Codec.Archives
                         videoDelay *= -1;
                         DelayPoint = 2;
                     }
-                    int section = (int)Math.Round(videoDelay * 192 * 0.008517663865, MidpointRounding.AwayFromZero);
+                    int section = (int)Math.Round(videoDelay * chart.quantizeNotes * 0.008517663865, MidpointRounding.AwayFromZero);
                     string BGAstringData = "#00004:";
-                    for (int i = 0; i < 192; i++)
+                    for (int i = 0; i < chart.quantizeNotes; i++)
                     {
                         if (section == i)
                         {

@@ -19,6 +19,9 @@ namespace Scharfrichter.Common
             config["BMS"].SetDefaultString("Players1", "1P");
             config["BMS"].SetDefaultString("Players2", "2P");
             config["BMS"].SetDefaultString("Players3", "DP");
+            config["BMS"].SetDefaultString("MovieFolder", "");
+            config["BMS"].SetDefaultString("Output", "");
+            config["BMS"].SetDefaultBool("IsSameFolderMovie", false);
             config["IIDX"].SetDefaultString("Difficulty0", "3");
             config["IIDX"].SetDefaultString("Difficulty1", "2");
             config["IIDX"].SetDefaultString("Difficulty2", "4");

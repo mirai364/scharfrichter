@@ -382,7 +382,14 @@ namespace Scharfrichter.Codec.Archives
             {
                 headerWriter.WriteLine("");
                 headerWriter.WriteLine("*---------------------- EXPANSION FIELD");
-                headerWriter.WriteLine("#BMP01 " + chart.Tags["VIDEO"] + ".wmv");
+                if (chart.isSameFolderMovie)
+                {
+                    headerWriter.WriteLine("#BMP01 " + chart.Tags["VIDEO"] + ".wmv");
+                }
+                else
+                {
+                    headerWriter.WriteLine("#BMP01 ..\\..\\Movie\\" + chart.Tags["VIDEO"] + ".wmv");
+                }
                 if (chart.Tags.ContainsKey("VIDEODELAY"))
                 {
                     double videoDelay = Int32.Parse(chart.Tags["VIDEODELAY"]);

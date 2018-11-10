@@ -185,6 +185,23 @@ namespace Scharfrichter.Common
             return Convert.ToInt32(Items[key]);
         }
 
+        public bool GetBool(string key)
+        {
+            key = key.ToUpper();
+            if (Items.ContainsKey(key))
+                return Convert.ToBoolean(Items[key]);
+            return false;
+        }
+
+        public bool GetBool(string key, bool defaultValue)
+        {
+            string stringValue = defaultValue.ToString();
+            key = key.ToUpper();
+            if (!Items.ContainsKey(key))
+                Items[key] = stringValue;
+            return Convert.ToBoolean(Items[key]);
+        }
+
         public void SetDefaultString(string key, string defaultValue)
         {
             key = key.ToUpper();
@@ -199,12 +216,24 @@ namespace Scharfrichter.Common
                 Items[key] = defaultValue.ToString();
         }
 
+        public void SetDefaultBool(string key, bool defaultValue)
+        {
+            key = key.ToUpper();
+            if (!Items.ContainsKey(key))
+                Items[key] = defaultValue.ToString();
+        }
+
         public void SetString(string key, string newValue)
         {
             Items[key] = newValue;
         }
 
         public void SetValue(string key, int newValue)
+        {
+            Items[key] = newValue.ToString();
+        }
+ 
+        public void SetBool(string key, bool newValue)
         {
             Items[key] = newValue.ToString();
         }

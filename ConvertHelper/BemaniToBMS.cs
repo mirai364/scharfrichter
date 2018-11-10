@@ -106,7 +106,7 @@ namespace ConvertHelper
                             {
                                 Console.WriteLine("Converting Samples");
                                 Bemani2DX archive = Bemani2DX.Read(source);
-                                ConvertSounds(archive.Sounds, filename, 0.6f, db[IIDXDBName]["TITLE"]);
+                                ConvertSounds(archive.Sounds, filename, 0.6f, config["BMS"]["Output"], db[IIDXDBName]["TITLE"]);
                             }
                             break;
                         case @".CS":
@@ -168,6 +168,9 @@ namespace ConvertHelper
             int difficulty = config["IIDX"].GetValue("Difficulty" + index.ToString());
             string title = config["BMS"]["Players" + config["IIDX"]["Players" + index.ToString()]] + " " + config["BMS"]["Difficulty" + difficulty.ToString()];
             title = title.Trim();
+            string movieFolder = config["BMS"]["MovieFolder"];
+            string outputFolder = config["BMS"]["Output"];
+            bool isSameFolderMovie = config["BMS"].GetBool("IsSameFolderMovie");
 
             if (quantizeMeasure > 0)
                 chart.QuantizeMeasureLengths(quantizeMeasure);
@@ -198,15 +201,10 @@ namespace ConvertHelper
                 else
                     bms.Charts[0].Tags["PLAYER"] = "1";
 
-                name = name.Replace(":", "_");
-                name = name.Replace("/", "_");
-                name = name.Replace("?", "_");
-                name = name.Replace("\\", "_");
-                name = name.Replace("*", "_");
+                // replace prohibited characters
+                name = nameReplace(name);
 
-                string dirPath = "C:\\BMSconverter\\DATA\\" + name;
-
-                string BGA = chart.Tags["VIDEO"];
+                string dirPath = outputFolder + name;
 
                 if (title != null && title.Length > 0)
                 {
@@ -220,14 +218,19 @@ namespace ConvertHelper
                 SafeCreateDirectory(dirPath);
                 string output = Path.Combine(dirPath, @"@" + name + ".bms");
 
-                string movFolder = "E:\\Game\\beatmania IIDX 25 CANNON BALLERS\\data\\movie\\" + BGA + ".wmv";
-                if (System.IO.File.Exists(movFolder))
+                bms.Charts[0].isSameFolderMovie = isSameFolderMovie;
+                if (chart.Tags.ContainsKey("VIDEO") && isSameFolderMovie)
                 {
-                    string copyPath = dirPath + "\\" + BGA + ".wmv";
-                    if (!System.IO.File.Exists(copyPath))
+                    string BGA = chart.Tags["VIDEO"];
+                    string movieFile = movieFolder + BGA + ".wmv";
+                    if (System.IO.File.Exists(movieFile))
                     {
-                        Console.WriteLine(copyPath);
-                        File.Copy(movFolder, copyPath);
+                        string copyPath = dirPath + "\\" + BGA + ".wmv";
+                        if (!System.IO.File.Exists(copyPath))
+                        {
+                            Console.WriteLine(copyPath);
+                            File.Copy(movieFile, copyPath);
+                        }
                     }
                 }
 
@@ -255,24 +258,18 @@ namespace ConvertHelper
             }
         }
 
-        static public void ConvertSounds(Sound[] sounds, string filename, float volume, string nameInfo = "")
+        static public void ConvertSounds(Sound[] sounds, string filename, float volume, string outputFolder = "", string nameInfo = "")
         {
             string name;
-            if (nameInfo == "")
+            if (nameInfo.Length == 0)
             {
                 name = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
             }
             else
             {
-                nameInfo = nameInfo.Replace(":", "：");
-                nameInfo = nameInfo.Replace("/", "_");
-                nameInfo = nameInfo.Replace("?", "_");
-                nameInfo = nameInfo.Replace("\\", "_");
-                nameInfo = nameInfo.Replace("*", "_");
-
-                name = nameInfo;
+                name = nameReplace(nameInfo);
             }
-            string targetPath = Path.Combine("C:\\BMSconverter\\DATA\\", name);
+            string targetPath = Path.Combine(outputFolder, name);
 
             if (!Directory.Exists(targetPath))
                 Directory.CreateDirectory(targetPath);
@@ -286,12 +283,32 @@ namespace ConvertHelper
             }
         }
 
+        /// <summary>
+        /// replace prohibited characters for windows systems
+        /// </summary>
+        /// <param name="nameInfo"></param>
+        /// <returns></returns>
+        static private string nameReplace(string nameInfo)
+        {
+            nameInfo = nameInfo.Replace(":", "：");
+            nameInfo = nameInfo.Replace("/", "_");
+            nameInfo = nameInfo.Replace("?", "_");
+            nameInfo = nameInfo.Replace("\\", "_");
+            nameInfo = nameInfo.Replace("*", "_");
+            return nameInfo;
+        }
+
         static private Configuration LoadDB()
         {
             Configuration config = Configuration.ReadFile(databaseFileName);
             return config;
         }
 
+        /// <summary>
+        /// Create folder if folder does not exist
+        /// </summary>
+        /// <param name="path"></param>
+        /// <returns></returns>
         public static DirectoryInfo SafeCreateDirectory(string path)
         {
             if (Directory.Exists(path))

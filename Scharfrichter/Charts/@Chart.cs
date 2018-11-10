@@ -15,6 +15,7 @@ namespace Scharfrichter.Codec.Charts
         public Fraction TickRate = new Fraction(0, 1);
 
         public int quantizeNotes { get; set; }
+        public bool isSameFolderMovie { get; set; }
 
 
         // Add judgement entries to the list. It's unsure if these are needed, but

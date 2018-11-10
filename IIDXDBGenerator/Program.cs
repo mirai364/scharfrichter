@@ -29,7 +29,21 @@ namespace IIDXDBGenerator
 
         static void Main(string[] args)
         {
-            string sourceFileName = @"D:\Torrent Seeds\DJHACKERS-LDJ\data\info\music_data.bin";
+            // show usage if no args provided
+            if (args.Length == 0 || args.Length > 1)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Usage: IIDXDBGenerator <input file>");
+                Console.WriteLine();
+                Console.WriteLine("Drag and drop with files and folders is fully supported for this application.");
+                Console.WriteLine();
+                Console.WriteLine("Supported file:");
+                Console.WriteLine("music_data.bin");
+                return;
+            }
+
+            string sourceFileName = args[0];
+            Console.WriteLine("inputFile : " + sourceFileName);
             byte[] data = File.ReadAllBytes(sourceFileName);
             Configuration result = Configuration.ReadFile("BeatmaniaDB");
 
@@ -37,9 +51,11 @@ namespace IIDXDBGenerator
             {
                 BinaryReader reader = new BinaryReader(mem);
                 if (reader.ReadInt32() != 0x58444949)
+                {
+                    Console.WriteLine("1");
                     return;
-                if (reader.ReadInt32() != 0x00000014)
-                    return;
+                }
+                reader.ReadInt32(); // music data version;
 
                 int metaCount = reader.ReadInt16();
                 int entryCount = reader.ReadInt16();
@@ -52,6 +68,7 @@ namespace IIDXDBGenerator
                 for (int i = 0; i < metaCount; i++)
                 {
                     byte[] metaRaw = reader.ReadBytes(800);
+                    reader.ReadBytes(32);
                     using (MemoryStream metaMem = new MemoryStream(metaRaw))
                     {
                         BinaryReader metaReader = new BinaryReader(metaMem);
@@ -85,8 +102,9 @@ namespace IIDXDBGenerator
                         int difficulty7 = metaReader.ReadByte();
                         metaReader.ReadBytes(160);
                         int songID = metaReader.ReadInt16();
-                        metaReader.ReadInt16();
-                        metaReader.ReadInt32();
+                        int version = metaReader.ReadByte();
+                        int afp_flag = metaReader.ReadByte();
+                        int volume = metaReader.ReadInt32();
                         byte rawKeyset0 = metaReader.ReadByte();
                         byte rawKeyset1 = metaReader.ReadByte();
                         byte rawKeyset2 = metaReader.ReadByte();
@@ -95,7 +113,7 @@ namespace IIDXDBGenerator
                         byte rawKeyset5 = metaReader.ReadByte();
                         byte rawKeyset6 = metaReader.ReadByte();
                         byte rawKeyset7 = metaReader.ReadByte();
-                        metaReader.ReadInt16();
+                        int bgaDelay = metaReader.ReadInt16();
                         metaReader.ReadInt16();
                         byte[] rawMovie = metaReader.ReadBytes(32);
                         int overlayFlags = metaReader.ReadInt32();
@@ -118,6 +136,9 @@ namespace IIDXDBGenerator
                             result[databasePrimaryKey]["GENRE"] = GetString(rawGenre);
                         if (rawMovie[0] != 0)
                             result[databasePrimaryKey]["VIDEO"] = GetString(rawMovie);
+                        result[databasePrimaryKey]["VIDEODELAY"] = bgaDelay.ToString();
+                        if (volume > 0)
+                            result[databasePrimaryKey]["VOLUME"] = volume.ToString();
                         if (overlayFlags != 0)
                         {
                             if (rawOverlay0[0] != 0)
@@ -140,17 +161,36 @@ namespace IIDXDBGenerator
                                 result[databasePrimaryKey]["OVERLAY8"] = GetString(rawOverlay8);
                         }
                         if (difficulty6 > 0)
+                        {
+                            result[databasePrimaryKey]["DIFFICULTYSP0"] = difficulty6.ToString();
                             result[databasePrimaryKey]["DIFFICULTYSP1"] = difficulty6.ToString();
+                        }
                         if (difficulty0 > 0)
+                        {
+                            if (difficulty6 <= 0)
+                            {
+                                result[databasePrimaryKey]["DIFFICULTYSP1"] = difficulty0.ToString();
+                            }
                             result[databasePrimaryKey]["DIFFICULTYSP2"] = difficulty0.ToString();
+                        }
                         if (difficulty1 > 0)
                             result[databasePrimaryKey]["DIFFICULTYSP3"] = difficulty1.ToString();
                         if (difficulty2 > 0)
                             result[databasePrimaryKey]["DIFFICULTYSP4"] = difficulty2.ToString();
+
                         if (difficulty7 > 0)
+                        {
+                            result[databasePrimaryKey]["DIFFICULTYDP0"] = difficulty7.ToString();
                             result[databasePrimaryKey]["DIFFICULTYDP1"] = difficulty7.ToString();
+                        }
                         if (difficulty3 > 0)
+                        {
+                            if (difficulty7 <= 0)
+                            {
+                                result[databasePrimaryKey]["DIFFICULTYDP1"] = difficulty3.ToString();
+                            }
                             result[databasePrimaryKey]["DIFFICULTYDP2"] = difficulty3.ToString();
+                        }
                         if (difficulty4 > 0)
                             result[databasePrimaryKey]["DIFFICULTYDP3"] = difficulty4.ToString();
                         if (difficulty5 > 0)

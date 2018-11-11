@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2013
-VisualStudioVersion = 12.0.31101.0
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2046
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scharfrichter.Codec", "Scharfrichter\Scharfrichter.Codec.csproj", "{DB34F6AF-C522-4149-A6D3-37A36D2D9590}"
 EndProject
@@ -44,6 +44,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MegaToast.UI", "MegaToast.UI\MegaToast.UI.csproj", "{4CD68C11-722E-4CE0-BD80-B939AC7152C3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FirebeatIIIExtract", "FirebeatIIIExtract\FirebeatIIIExtract.csproj", "{7D18FE75-B914-4E0B-AA65-CB0287E47DDA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S3PConverter", "S3PConverter\S3PConverter.csproj", "{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -265,8 +267,21 @@ Global
 		{7D18FE75-B914-4E0B-AA65-CB0287E47DDA}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
 		{7D18FE75-B914-4E0B-AA65-CB0287E47DDA}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{7D18FE75-B914-4E0B-AA65-CB0287E47DDA}.Release|x86.ActiveCfg = Release|Any CPU
+		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Debug|Any CPU.ActiveCfg = Debug|x86
+		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Debug|Mixed Platforms.ActiveCfg = Debug|x86
+		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Debug|Mixed Platforms.Build.0 = Debug|x86
+		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Debug|x86.ActiveCfg = Debug|x86
+		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Debug|x86.Build.0 = Debug|x86
+		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Release|Any CPU.ActiveCfg = Release|x86
+		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Release|Mixed Platforms.ActiveCfg = Release|x86
+		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Release|Mixed Platforms.Build.0 = Release|x86
+		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Release|x86.ActiveCfg = Release|x86
+		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E9216D93-98F0-45B9-956D-A373A9FC7B21}
 	EndGlobalSection
 EndGlobal

@@ -54,7 +54,7 @@ namespace ConvertHelper
                 Console.WriteLine("Drag and drop with files and folders is fully supported for this application.");
                 Console.WriteLine();
                 Console.WriteLine("Supported formats:");
-                Console.WriteLine("1, 2DX, CS, SD9, SSP");
+                Console.WriteLine("1, 2DX, S3P, CS, SD9, SSP");
             }
 
             // process files

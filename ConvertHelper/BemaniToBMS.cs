@@ -67,10 +67,16 @@ namespace ConvertHelper
                     string filename = args[i];
 
                     string IIDXDBName = Path.GetFileNameWithoutExtension(filename);
-                    bool isPre2DX = false; 
+                    bool isPre2DX = false;
+                    string INDEX = null;
                     if (IIDXDBName.Contains("pre"))
                     {
                         isPre2DX = true;
+                        IIDXDBName = IIDXDBName.Substring(0, 5);
+                    }
+                    if (IIDXDBName.Length > 5)
+                    {
+                        INDEX = IIDXDBName.Substring(5);
                         IIDXDBName = IIDXDBName.Substring(0, 5);
                     }
                     while (IIDXDBName.StartsWith("0"))
@@ -97,9 +103,15 @@ namespace ConvertHelper
                                             chart.Tags["VIDEO"] = db[IIDXDBName]["VIDEO"];
                                             chart.Tags["VIDEODELAY"] = db[IIDXDBName]["VIDEODELAY"];
                                             if (j < 6)
+                                            {
                                                 chart.Tags["PLAYLEVEL"] = db[IIDXDBName]["DIFFICULTYSP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
+                                                chart.Tags["KEYSET"] = db[IIDXDBName]["KEYSETSP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
+                                            }
                                             else if (j < 12)
+                                            {
                                                 chart.Tags["PLAYLEVEL"] = db[IIDXDBName]["DIFFICULTYDP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
+                                                chart.Tags["KEYSET"] = db[IIDXDBName]["KEYSETDP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
+                                            }
                                         }
                                     }
                                 }
@@ -121,7 +133,7 @@ namespace ConvertHelper
                                     volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
                                     title = db[IIDXDBName]["TITLE"];
                                 }
-                                ConvertSounds(archive.Sounds, filename, volume, output, title, isPre2DX);
+                                ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX);
                             }
                             break;
                         case @".S3P":
@@ -138,7 +150,7 @@ namespace ConvertHelper
                                     volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
                                     title = db[IIDXDBName]["TITLE"];
                                 }
-                                ConvertSounds(archive.Sounds, filename, volume, output, title, isPre2DX);
+                                ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX);
                             }
                             break;
                         case @".CS":
@@ -284,14 +296,14 @@ namespace ConvertHelper
                         // something weird happened
                     }
                 }
-                bms.GenerateSampleTags();
+                bms.GenerateSampleTags(bms.Charts[0].Tags["KEYSET"]);
                 bms.Write(mem, true);
 
                 File.WriteAllBytes(output, mem.ToArray());
             }
         }
 
-        static public void ConvertSounds(Sound[] sounds, string filename, float volume, string outputFolder = "", string nameInfo = "", bool isPre2DX = false)
+        static public void ConvertSounds(Sound[] sounds, string filename, float volume, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false)
         {
             string name;
             if (nameInfo.Length == 0)
@@ -312,6 +324,10 @@ namespace ConvertHelper
             else
             {
                 targetPath += "\\sounds";
+                if (INDEX != null)
+                {
+                    targetPath += "_" + INDEX;
+                }
                 SafeCreateDirectory(targetPath);
                 int count = sounds.Length;
 
@@ -334,6 +350,7 @@ namespace ConvertHelper
             nameInfo = nameInfo.Replace("/", "_");
             nameInfo = nameInfo.Replace("?", "_");
             nameInfo = nameInfo.Replace("\\", "_");
+            nameInfo = nameInfo.Replace("\"", "_");
             nameInfo = nameInfo.Replace("*", "_");
             return nameInfo;
         }

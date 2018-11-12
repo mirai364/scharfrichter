@@ -55,7 +55,7 @@ namespace Scharfrichter.Codec.Archives
             SampleMap = usedSamples;
         }
 
-        public void GenerateSampleTags()
+        public void GenerateSampleTags(string keyset = "0")
         {
             Chart chart = charts[0];
 
@@ -63,13 +63,22 @@ namespace Scharfrichter.Codec.Archives
             {
                 Console.WriteLine("WARNING: More than 1293 samples.");
             }
+            string targetFolder;
+            if (keyset == "0")
+            {
+                targetFolder = "sounds\\";
+            }
+            else
+            {
+                targetFolder = "sounds_" + keyset + "\\";
+            }
 
             for (int i = 0; i < 1294; i++)
             {
                 int index = sampleMap[i];
                 if (index != 0)
                 {
-                    chart.Tags["WAV" + Util.ConvertToBMEString(i, 2)] = "sounds\\" + Util.ConvertToBMEString(index, 4) + ".wav";
+                    chart.Tags["WAV" + Util.ConvertToBMEString(i, 2)] = targetFolder + Util.ConvertToBMEString(index, 4) + ".wav";
                 }
             }
         }
@@ -366,7 +375,7 @@ namespace Scharfrichter.Codec.Archives
             {
                 if (tag.Value != null && tag.Value.Length > 0)
                 {
-                    if (tag.Key == "VIDEO" || tag.Key == "VIDEODELAY")
+                    if (tag.Key == "VIDEO" || tag.Key == "VIDEODELAY" || tag.Key == "KEYSET")
                     {
                         continue;
                     }

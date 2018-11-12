@@ -105,14 +105,14 @@ namespace IIDXDBGenerator
                         int version = metaReader.ReadByte();
                         int afp_flag = metaReader.ReadByte();
                         int volume = metaReader.ReadInt32();
-                        byte rawKeyset0 = metaReader.ReadByte();
-                        byte rawKeyset1 = metaReader.ReadByte();
-                        byte rawKeyset2 = metaReader.ReadByte();
-                        byte rawKeyset3 = metaReader.ReadByte();
-                        byte rawKeyset4 = metaReader.ReadByte();
-                        byte rawKeyset5 = metaReader.ReadByte();
-                        byte rawKeyset6 = metaReader.ReadByte();
-                        byte rawKeyset7 = metaReader.ReadByte();
+                        char rawKeyset0 = (char)metaReader.ReadByte();
+                        char rawKeyset1 = (char)metaReader.ReadByte();
+                        char rawKeyset2 = (char)metaReader.ReadByte();
+                        char rawKeyset3 = (char)metaReader.ReadByte();
+                        char rawKeyset4 = (char)metaReader.ReadByte();
+                        char rawKeyset5 = (char)metaReader.ReadByte();
+                        char rawKeyset6 = (char)metaReader.ReadByte();
+                        char rawKeyset7 = (char)metaReader.ReadByte();
                         int bgaDelay = metaReader.ReadInt16();
                         metaReader.ReadInt16();
                         byte[] rawMovie = metaReader.ReadBytes(32);
@@ -195,6 +195,45 @@ namespace IIDXDBGenerator
                             result[databasePrimaryKey]["DIFFICULTYDP3"] = difficulty4.ToString();
                         if (difficulty5 > 0)
                             result[databasePrimaryKey]["DIFFICULTYDP4"] = difficulty5.ToString();
+
+
+
+
+                        if (rawKeyset6 > 0)
+                        {
+                            result[databasePrimaryKey]["KEYSETSP0"] = rawKeyset6.ToString();
+                            result[databasePrimaryKey]["KEYSETSP1"] = rawKeyset6.ToString();
+                        }
+                        if (rawKeyset0 > 0)
+                        {
+                            if (rawKeyset6 <= 0)
+                            {
+                                result[databasePrimaryKey]["KEYSETSP1"] = rawKeyset0.ToString();
+                            }
+                            result[databasePrimaryKey]["KEYSETSP2"] = rawKeyset0.ToString();
+                        }
+                        if (rawKeyset1 > 0)
+                            result[databasePrimaryKey]["KEYSETSP3"] = rawKeyset1.ToString();
+                        if (rawKeyset2 > 0)
+                            result[databasePrimaryKey]["KEYSETSP4"] = rawKeyset2.ToString();
+
+                        if (rawKeyset7 > 0)
+                        {
+                            result[databasePrimaryKey]["KEYSETDP0"] = rawKeyset7.ToString();
+                            result[databasePrimaryKey]["KEYSETDP1"] = rawKeyset7.ToString();
+                        }
+                        if (rawKeyset3 > 0)
+                        {
+                            if (rawKeyset7 <= 0)
+                            {
+                                result[databasePrimaryKey]["KEYSETDP1"] = rawKeyset3.ToString();
+                            }
+                            result[databasePrimaryKey]["KEYSETDP2"] = rawKeyset3.ToString();
+                        }
+                        if (rawKeyset4 > 0)
+                            result[databasePrimaryKey]["KEYSETDP3"] = rawKeyset4.ToString();
+                        if (rawKeyset5 > 0)
+                            result[databasePrimaryKey]["KEYSETDP4"] = rawKeyset5.ToString();
                     }
                 }
             }

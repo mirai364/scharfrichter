@@ -15,6 +15,10 @@ functionality, just include the `Scharfrichter` project. There is a couple helpe
 Typically all you have to do is feed it an input file. Output folders will be created automatically
 in the same folder. Output folder options are planned for the future.
 
+### optional  
+If you need to include a movie when converting ".1" file, please set "MOVIEFOLDER" setting and "ISSAMEFOLDERMOVIE" to "true" in [BMS].  
+If you want to change the output folder, please change "OUTPUT" setting in [BMS]. 
+
 ## What it can do
 
 ### Media conversion
@@ -57,7 +61,7 @@ WIP, assume it doesn't work.
 Very limited testing- it might fail on IFS files from games that aren't IIDX.
 
 ### IIDXDBGenerator
-Drag & Drop your music_data.bin
+Drag & Drop your music_data.bin  
 If there is added to the read data, add data to onfig/BeatmaniaDB.txt
 
 ### LZDecompress, LZSS2Decompress

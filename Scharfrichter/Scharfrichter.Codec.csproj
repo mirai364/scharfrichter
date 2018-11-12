@@ -36,6 +36,12 @@
     </ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="NAudio, Version=1.8.5.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\NAudio.1.8.5\lib\net35\NAudio.dll</HintPath>
+    </Reference>
+    <Reference Include="NAudio.WindowsMediaFormat, Version=1.0.1.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\NAudio.Wma.1.0.1\lib\net35\NAudio.WindowsMediaFormat.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Data" />
@@ -44,6 +50,7 @@
   <ItemGroup>
     <Compile Include="Archives\%40Archive.cs" />
     <Compile Include="Archives\Bemani1.cs" />
+    <Compile Include="Archives\BemaniS3P.cs" />
     <Compile Include="Archives\Bemani2DX.cs" />
     <Compile Include="Archives\BemaniIFS.cs" />
     <Compile Include="Archives\BemaniSSP.cs" />
@@ -59,6 +66,7 @@
     <Compile Include="Charts\Beatmania7Key.cs" />
     <Compile Include="Charts\BeatmaniaIII.cs" />
     <Compile Include="Encryption\BemaniPCEout.cs" />
+    <Compile Include="Sounds\BemaniS3PSound.cs" />
     <Compile Include="Sounds\RF5C400.cs" />
     <Compile Include="Sounds\YMZ280B.cs" />
     <Compile Include="XACT3\Xact3WaveBank.cs" />
@@ -94,10 +102,7 @@
     <Compile Include="Videos\%40Video.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\NAudio\NAudio.csproj">
-      <Project>{DA4F02E3-0B5E-42CD-B8D9-5583FA51D66E}</Project>
-      <Name>NAudio</Name>
-    </ProjectReference>
+    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

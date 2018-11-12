@@ -124,6 +124,23 @@ namespace ConvertHelper
                                 ConvertSounds(archive.Sounds, filename, volume, output, title, isPre2DX);
                             }
                             break;
+                        case @".S3P":
+                            using (MemoryStream source = new MemoryStream(data))
+                            {
+                                Console.WriteLine("Converting Samples");
+                                BemaniS3P archive = BemaniS3P.Read(source);
+
+                                string output = config["BMS"]["Output"];
+                                float volume = 0.6f;
+                                string title = "";
+                                if (db[IIDXDBName]["TITLE"] != "")
+                                {
+                                    volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
+                                    title = db[IIDXDBName]["TITLE"];
+                                }
+                                ConvertSounds(archive.Sounds, filename, volume, output, title, isPre2DX);
+                            }
+                            break;
                         case @".CS":
                             using (MemoryStream source = new MemoryStream(data))
                                 ConvertChart(BeatmaniaIIDXCSNew.Read(source), config, filename, -1, null);

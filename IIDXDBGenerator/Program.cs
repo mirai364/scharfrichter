@@ -55,7 +55,7 @@ namespace IIDXDBGenerator
                     Console.WriteLine("1");
                     return;
                 }
-                reader.ReadInt32(); // music data version;
+                int musicDataVersion = reader.ReadInt32();
 
                 int metaCount = reader.ReadInt16();
                 int entryCount = reader.ReadInt16();
@@ -68,7 +68,10 @@ namespace IIDXDBGenerator
                 for (int i = 0; i < metaCount; i++)
                 {
                     byte[] metaRaw = reader.ReadBytes(800);
-                    reader.ReadBytes(32);
+
+                    if (musicDataVersion > 21)
+                        reader.ReadBytes(32);
+
                     using (MemoryStream metaMem = new MemoryStream(metaRaw))
                     {
                         BinaryReader metaReader = new BinaryReader(metaMem);

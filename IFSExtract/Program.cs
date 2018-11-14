@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Diagnostics;
 
 namespace IFSExtract
 {
@@ -24,7 +26,8 @@ namespace IFSExtract
                 args = new string[] { Console.ReadLine() };
                 if (args[0] == "")
                 {
-                    args[0] = @"D:\BMS\sound\[IFS]\10006.ifs";
+                    args[0] = @"D:\BMS\beatmania IIDX 25 CANNON BALLERS (arcade)\data\10006.ifs";
+                    Console.WriteLine(args[0]);
                     //args[0] = @"d:\bms\sound\[ifs]\01000.ifs";
                 }
             }
@@ -61,29 +64,19 @@ namespace IFSExtract
                             BemaniIFS archive = BemaniIFS.Read(fs);
                             int count = archive.RawDataCount;
 
-                            //Console.WriteLine("Exporting files.");
+                            Console.WriteLine("Exporting files.");
+                            for (int j = count - 1; j >= 0; j--)
+                            {
+                                byte[] data = archive.RawData[j];
+                                string name = archive.Properties[j];
+                                DateTime timeStamp = archive.TimeStamps[j];
 
-                            //for (int j = 0; j < count; j++)
-                            //{
-                            //    string outputNumber = Util.ConvertToDecimalString(j, 4);
-                            //    string outputFile = outputFileBase;
-                            //    string extension = "dat";
-
-                            //    byte[] data = archive.RawData[j];
-
-                            //    // heuristics block
-                            //    if (Heuristics.DetectBemaniModel2DXAC(data))
-                            //        extension = "model";
-                            //    else if (Heuristics.DetectBemani2DXArchive(data))
-                            //        extension = "2dx";
-                            //    else if (Heuristics.DetectBemani1(data))
-                            //        extension = "1";
-                            //    else if (Heuristics.DetectBemaniImage2DXAC(data))
-                            //        extension = "cimg";
-
-                            //    outputFile += "-" + outputNumber + "." + extension;
-                            //    File.WriteAllBytes(outputFile, archive.RawData[j]);
-                            //}
+                                string outputFile = Path.Combine(outputPath, name);
+                                File.WriteAllBytes(outputFile, data);
+                                File.SetCreationTime(outputFile, timeStamp);
+                                File.SetLastAccessTimeUtc(outputFile, timeStamp);
+                                File.SetLastWriteTimeUtc(outputFile, timeStamp);
+                            }
                         }
                     }
                 }

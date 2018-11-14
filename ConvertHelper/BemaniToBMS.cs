@@ -67,6 +67,7 @@ namespace ConvertHelper
                     string filename = args[i];
 
                     string IIDXDBName = Path.GetFileNameWithoutExtension(filename);
+                    string version = IIDXDBName.Substring(0, 2);
                     bool isPre2DX = false;
                     string INDEX = null;
                     if (IIDXDBName.Contains("pre"))
@@ -116,7 +117,7 @@ namespace ConvertHelper
                                     }
                                 }
 
-                                ConvertArchive(archive, config, args[i]);
+                                ConvertArchive(archive, config, args[i], version);
                             }
                             break;
                         case @".2DX":
@@ -133,7 +134,7 @@ namespace ConvertHelper
                                     volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
                                     title = db[IIDXDBName]["TITLE"];
                                 }
-                                ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX);
+                                ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX, version);
                             }
                             break;
                         case @".S3P":
@@ -150,7 +151,7 @@ namespace ConvertHelper
                                     volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
                                     title = db[IIDXDBName]["TITLE"];
                                 }
-                                ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX);
+                                ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX, version);
                             }
                             break;
                         case @".CS":
@@ -188,19 +189,19 @@ namespace ConvertHelper
             Console.WriteLine("BemaniToBMS finished.");
         }
 
-        static public void ConvertArchive(Archive archive, Configuration config, string filename)
+        static public void ConvertArchive(Archive archive, Configuration config, string filename, string version = "")
         {
             for (int j = 0; j < archive.ChartCount; j++)
             {
                 if (archive.Charts[j] != null)
                 {
                     Console.WriteLine("Converting Chart " + j.ToString());
-                    ConvertChart(archive.Charts[j], config, filename, j, null);
+                    ConvertChart(archive.Charts[j], config, filename, j, null, version);
                 }
             }
         }
 
-        static public void ConvertChart(Chart chart, Configuration config, string filename, int index, int[] map)
+        static public void ConvertChart(Chart chart, Configuration config, string filename, int index, int[] map, string version = "")
         {
             if (config == null)
             {
@@ -213,7 +214,7 @@ namespace ConvertHelper
             string title = config["BMS"]["Players" + config["IIDX"]["Players" + index.ToString()]] + " " + config["BMS"]["Difficulty" + difficulty.ToString()];
             title = title.Trim();
             string movieFolder = config["BMS"]["MovieFolder"];
-            string outputFolder = config["BMS"]["Output"];
+            string outputFolder = config["BMS"]["Output"] + version + "\\";
             bool isSameFolderMovie = config["BMS"].GetBool("IsSameFolderMovie");
 
             if (quantizeMeasure > 0)
@@ -296,14 +297,18 @@ namespace ConvertHelper
                         // something weird happened
                     }
                 }
-                bms.GenerateSampleTags(bms.Charts[0].Tags["KEYSET"]);
+                string keyset = "0";
+                if (chart.Tags.ContainsKey("KEYSET"))
+                    keyset = chart.Tags["KEYSET"];
+
+                bms.GenerateSampleTags(keyset);
                 bms.Write(mem, true);
 
                 File.WriteAllBytes(output, mem.ToArray());
             }
         }
 
-        static public void ConvertSounds(Sound[] sounds, string filename, float volume, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false)
+        static public void ConvertSounds(Sound[] sounds, string filename, float volume, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "")
         {
             string name;
             if (nameInfo.Length == 0)
@@ -314,7 +319,7 @@ namespace ConvertHelper
             {
                 name = nameReplace(nameInfo);
             }
-            string targetPath = Path.Combine(outputFolder, name);
+            string targetPath = Path.Combine(outputFolder, version, name);
             SafeCreateDirectory(targetPath);
 
             if (isPre2DX)

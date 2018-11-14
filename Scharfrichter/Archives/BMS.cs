@@ -408,6 +408,11 @@ namespace Scharfrichter.Codec.Archives
                         DelayPoint = 2;
                     }
                     int section = (int)Math.Round(videoDelay * chart.quantizeNotes * 0.008517663865, MidpointRounding.AwayFromZero);
+                    if (section > chart.quantizeNotes)
+                    {
+                        section -= chart.quantizeNotes;
+                        DelayPoint = 1;
+                    }
                     string BGAstringData = "#00004:";
                     for (int i = 0; i < chart.quantizeNotes; i++)
                     {

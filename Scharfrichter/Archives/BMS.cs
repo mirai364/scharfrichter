@@ -387,16 +387,16 @@ namespace Scharfrichter.Codec.Archives
             expansionWriter.WriteLine("");
             expansionWriter.WriteLine("");
             expansionWriter.WriteLine("*---------------------- EXPANSION FIELD");
-            expansionWriter.WriteLine("PREVIEW preview.wav");
+            expansionWriter.WriteLine("#PREVIEW preview.wav");
             if (chart.Tags.ContainsKey("VIDEO"))
             {
                 if (chart.isSameFolderMovie)
                 {
-                    expansionWriter.WriteLine("BMP01 " + chart.Tags["VIDEO"] + ".wmv");
+                    expansionWriter.WriteLine("#BMP01 " + chart.Tags["VIDEO"] + ".wmv");
                 }
                 else
                 {
-                    expansionWriter.WriteLine("BMP01 ..\\..\\Movie\\" + chart.Tags["VIDEO"] + ".wmv");
+                    expansionWriter.WriteLine("#BMP01 ..\\..\\Movie\\" + chart.Tags["VIDEO"] + ".wmv");
                 }
                 if (chart.Tags.ContainsKey("VIDEODELAY"))
                 {

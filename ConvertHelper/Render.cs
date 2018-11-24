@@ -59,16 +59,47 @@ namespace ConvertHelper
                 Console.WriteLine("1, 2DX");
             }
 
-            Sound[] sounds = null;
+            Dictionary<string, Sound[]> sounds = new Dictionary<string, Sound[]>();
             Chart[] charts = null;
             bool cancel = false;
             string outFile = "0001";
             string targetPath = null;
+            string IIDXDBName = Path.GetFileNameWithoutExtension(args[0]);
+            string title = IIDXDBName;
+            string version = IIDXDBName.Substring(0, 2);
+
+            if (IIDXDBName.Contains("pre"))
+            {
+                IIDXDBName = IIDXDBName.Substring(0, 5);
+            }
+            if (IIDXDBName.Length > 5)
+            {
+                IIDXDBName = IIDXDBName.Substring(0, 5);
+            }
+            while (IIDXDBName.StartsWith("0"))
+                IIDXDBName = IIDXDBName.Substring(1);
+
+            if (db[IIDXDBName]["TITLE"] != "")
+            {
+                title = db[IIDXDBName]["TITLE"];
+                title = Common.nameReplace(title);
+            }
 
             foreach (string filename in args)
             {
                 if (cancel)
                     break;
+
+                string tmp = Path.GetFileNameWithoutExtension(filename);
+                string INDEX = "0";
+                if (tmp.Contains("pre"))
+                {
+                    continue;
+                }
+                if (tmp.Length > 5)
+                {
+                    INDEX = tmp.Substring(5);
+                }
 
                 if (File.Exists(filename))
                 {
@@ -94,11 +125,11 @@ namespace ConvertHelper
                             }
                             break;
                         case @".2DX":
-                            if (sounds == null)
+                            if (!sounds.ContainsKey(INDEX))
                             {
                                 using (MemoryStream mem = new MemoryStream(File.ReadAllBytes(filename)))
                                 {
-                                    sounds = Bemani2DX.Read(mem).Sounds;
+                                    sounds.Add(INDEX, Bemani2DX.Read(mem).Sounds);
                                 }
                             }
                             break;
@@ -108,41 +139,41 @@ namespace ConvertHelper
 
             if (!cancel && (sounds != null) && (charts != null))
             {
-
-                if (idUseRenderAutoTip)
-                {
-                    string IIDXDBName = Path.GetFileNameWithoutExtension(args[1]);
-                    string title = IIDXDBName;
-                    string version = IIDXDBName.Substring(0, 2);
-                    string INDEX = null;
-                    if (IIDXDBName.Length > 5)
-                    {
-                        INDEX = IIDXDBName.Substring(5);
-                        IIDXDBName = IIDXDBName.Substring(0, 5);
-                    }
-                    while (IIDXDBName.StartsWith("0"))
-                        IIDXDBName = IIDXDBName.Substring(1);
-
-                    if (db[IIDXDBName]["TITLE"] != "")
-                    {
-                        title = db[IIDXDBName]["TITLE"];
-                        title = Common.nameReplace(title);
-                    }
-                    targetPath = Path.Combine(output, version, title, "sounds");
-                }
-
                 List<byte[]> rendered = new List<byte[]>();
                 List<int> renderedIndex = new List<int>();
 
                 for (int k = 0; k < charts.Length; k++)
                 {
+                    string keySet = "0";
+                    if (k < 6)
+                    {
+                        keySet = db[IIDXDBName]["KEYSETSP" + config["IIDX"]["DIFFICULTY" + k.ToString()]];
+                    }
+                    else if (k < 12)
+                    {
+                        keySet = db[IIDXDBName]["KEYSETDP" + config["IIDX"]["DIFFICULTY" + k.ToString()]];
+                    }
                     Chart chart = charts[k];
 
                     if (chart == null)
                         continue;
 
+
+                    Console.WriteLine("");
                     Console.WriteLine("Rendering " + k.ToString());
-                    byte[] data = ChartRenderer.Render(chart, sounds);
+                    Console.WriteLine("Use keySet " + keySet);
+                    Sound[] tmpSound;
+                    if (!sounds.TryGetValue(keySet, out tmpSound))
+                    {
+                        Console.WriteLine("not found keySet");
+                        if (!sounds.TryGetValue("0", out tmpSound))
+                        {
+                            Console.WriteLine("not found sounds \n continue");
+                            continue;
+                        }
+                    }
+
+                    byte[] data = ChartRenderer.Render(chart, tmpSound);
 
                     int renderedCount = rendered.Count;
                     int matchIndex = -1;
@@ -169,6 +200,14 @@ namespace ConvertHelper
                                 break;
                             }
                         }
+                    }
+                    if (idUseRenderAutoTip)
+                    {
+                        string targetFolder = "sounds";
+                        if (keySet != "0")
+                            targetFolder = "sounds_" + keySet;
+                        targetPath = Path.Combine(output, version, title, targetFolder);
+                        match = false;
                     }
 
                     if (!match)

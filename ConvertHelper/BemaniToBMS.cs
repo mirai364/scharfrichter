@@ -91,10 +91,9 @@ namespace ConvertHelper
                                 if (idUseRenderAutoTip)
                                 {
                                     Console.WriteLine("Convert AutoTips");
-                                    string[] array = new string[2];
-                                    array[0] = args[i];
-                                    array[1] = args[i].Replace(".1", ".2dx");
-                                    Render.RenderWAV(array, 1, 1000);
+                                    Console.WriteLine(args[i].Remove(args[i].Length - 8));
+                                    string[] files = System.IO.Directory.GetFiles(args[i].Remove(args[i].Length - 8), "*", SearchOption.AllDirectories);
+                                    Render.RenderWAV(files, 1, 1000);
 
                                     ignore.Add(3, 3);
                                 }

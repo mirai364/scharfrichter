@@ -133,6 +133,15 @@ namespace ConvertHelper
                                 }
                             }
                             break;
+                        case @".S3P":
+                            if (!sounds.ContainsKey(INDEX))
+                            {
+                                using (MemoryStream mem = new MemoryStream(File.ReadAllBytes(filename)))
+                                {
+                                    sounds.Add(INDEX, BemaniS3P.Read(mem).Sounds);
+                                }
+                            }
+                            break;
                     }
                 }
             }

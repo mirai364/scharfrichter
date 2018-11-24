@@ -56,7 +56,7 @@ namespace Scharfrichter.Codec.Archives
             SampleMap = usedSamples;
         }
 
-        public void GenerateReSampleTags(string keyset = "0")
+        public void GenerateReSampleTags(string keyset = "0", string rendarWavName = "")
         {
             Chart chart = charts[0];
             string targetFolder;
@@ -78,6 +78,11 @@ namespace Scharfrichter.Codec.Archives
                 }
                 chart.Tags["WAV" + Util.ConvertToBMEString(pair.Value + 1, 2)] = targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".wav";
                 //Console.WriteLine("WAV" + Util.ConvertToBMEString(pair.Value + 1, 2) + " " + targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".wav");
+            }
+
+            if (rendarWavName.Length > 0)
+            {
+                chart.Tags["WAV01"] = targetFolder + rendarWavName + ".wav";
             }
         }
 
@@ -349,6 +354,7 @@ namespace Scharfrichter.Codec.Archives
         public void Write(Stream target, bool enableBackspinScratch)
         {
             int DelayPoint = 0;
+            bool idUseRenderAutoTip = false;
             Dictionary<int, Fraction> bpmMap = new Dictionary<int, Fraction>();
             BinaryWriter writer = new BinaryWriter(target, Encoding.GetEncoding(932));
             Chart chart = charts[0];
@@ -430,7 +436,11 @@ namespace Scharfrichter.Codec.Archives
             expansionWriter.WriteLine("");
             expansionWriter.WriteLine("");
 
-            chart.ClearUsed();
+            if (chart.Tags.ContainsKey("ISUSERENDERAUTOTIP"))
+            {
+                idUseRenderAutoTip = System.Convert.ToBoolean(chart.Tags["ISUSERENDERAUTOTIP"]);
+            }
+                chart.ClearUsed();
 
             // iterate through all events
             int currentMeasure = 0;
@@ -445,6 +455,18 @@ namespace Scharfrichter.Codec.Archives
             int currentPlayer = -1;
             string laneString = "";
             string measureString = "";
+            string rendarWavName = "";
+            if (idUseRenderAutoTip)
+            {
+                reSampleMap.Add(1, 0);
+                int tmpCurrentMeasure = currentMeasure + DelayPoint;
+                measureString = tmpCurrentMeasure.ToString();
+                while (measureString.Length < 3)
+                    measureString = "0" + measureString;
+                bodyWriter.WriteLine("#" + measureString + "01:01");
+                measureString = "";
+                rendarWavName = "0001-" + chart.Tags["PLAYER"] + chart.Tags["DIFFICULTY"];
+            }
 
             while (currentMeasure < measureCount)
             {
@@ -733,16 +755,14 @@ namespace Scharfrichter.Codec.Archives
             string keyset = "0";
             if (chart.Tags.ContainsKey("KEYSET"))
                 keyset = chart.Tags["KEYSET"];
-            GenerateReSampleTags(keyset);
+            GenerateReSampleTags(keyset, rendarWavName);
 
             foreach (KeyValuePair<string, string> tag in chart.Tags)
             {
                 if (tag.Value != null && tag.Value.Length > 0)
                 {
-                    if (tag.Key == "VIDEO" || tag.Key == "VIDEODELAY" || tag.Key == "KEYSET")
-                    {
+                    if (tag.Key == "VIDEO" || tag.Key == "VIDEODELAY" || tag.Key == "KEYSET" || tag.Key == "ISUSERENDERAUTOTIP")
                         continue;
-                    }
                     headerWriter.WriteLine("#" + tag.Key + " " + tag.Value);
                 }
                 else

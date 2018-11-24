@@ -14,16 +14,14 @@ namespace ConvertHelper
 {
     static public class BemaniToBMS
     {
-        private const string configFileName = "Convert";
-        private const string databaseFileName = "BeatmaniaDB";
-
         static public void Convert(string[] inArgs, long unitNumerator, long unitDenominator)
         {
             // configuration
-            Configuration config = Configuration.LoadIIDXConfig(configFileName);
-            Configuration db = LoadDB();
+            Configuration config = Configuration.LoadIIDXConfig(Common.configFileName);
+            Configuration db = Common.LoadDB();
             int quantizeMeasure = config["BMS"].GetValue("QuantizeMeasure");
             int quantizeNotes = config["BMS"].GetValue("QuantizeNotes");
+            bool idUseRenderAutoTip = config["BMS"].GetBool("IsUseRenderAutoTip");
 
             // splash
             Splash.Show("Bemani to BeMusic Script");
@@ -89,7 +87,18 @@ namespace ConvertHelper
                         case @".1":
                             using (MemoryStream source = new MemoryStream(data))
                             {
-                                Bemani1 archive = Bemani1.Read(source, unitNumerator, unitDenominator);
+                                Dictionary<int, int> ignore = new Dictionary<int, int>();
+                                if (idUseRenderAutoTip)
+                                {
+                                    Console.WriteLine("Convert AutoTips");
+                                    string[] array = new string[2];
+                                    array[0] = args[i];
+                                    array[1] = args[i].Replace(".1", ".2dx");
+                                    Render.RenderWAV(array, 1, 1000);
+
+                                    ignore.Add(3, 3);
+                                }
+                                Bemani1 archive = Bemani1.Read(source, unitNumerator, unitDenominator, ignore);
 
                                 if (db[IIDXDBName]["TITLE"] != "")
                                 {
@@ -107,11 +116,13 @@ namespace ConvertHelper
                                             {
                                                 chart.Tags["PLAYLEVEL"] = db[IIDXDBName]["DIFFICULTYSP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
                                                 chart.Tags["KEYSET"] = db[IIDXDBName]["KEYSETSP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
+                                                chart.Tags["ISUSERENDERAUTOTIP"] = idUseRenderAutoTip.ToString();
                                             }
                                             else if (j < 12)
                                             {
                                                 chart.Tags["PLAYLEVEL"] = db[IIDXDBName]["DIFFICULTYDP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
                                                 chart.Tags["KEYSET"] = db[IIDXDBName]["KEYSETDP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
+                                                chart.Tags["ISUSERENDERAUTOTIP"] = idUseRenderAutoTip.ToString();
                                             }
                                         }
                                     }
@@ -205,7 +216,7 @@ namespace ConvertHelper
         {
             if (config == null)
             {
-                config = Configuration.LoadIIDXConfig(configFileName);
+                config = Configuration.LoadIIDXConfig(Common.configFileName);
             }
 
             int quantizeNotes = config["BMS"].GetValue("QuantizeNotes");
@@ -248,7 +259,7 @@ namespace ConvertHelper
      
 
                 // replace prohibited characters
-                name = nameReplace(name);
+                name = Common.nameReplace(name);
 
                 string dirPath = outputFolder + name;
 
@@ -261,7 +272,7 @@ namespace ConvertHelper
                     name += " [" + title + "]";
                 }
 
-                SafeCreateDirectory(dirPath);
+                Common.SafeCreateDirectory(dirPath);
                 string output = Path.Combine(dirPath, @"@" + name + ".bms");
 
                 bms.Charts[0].isSameFolderMovie = isSameFolderMovie;
@@ -312,10 +323,10 @@ namespace ConvertHelper
             }
             else
             {
-                name = nameReplace(nameInfo);
+                name = Common.nameReplace(nameInfo);
             }
             string targetPath = Path.Combine(outputFolder, version, name);
-            SafeCreateDirectory(targetPath);
+            Common.SafeCreateDirectory(targetPath);
 
             if (isPre2DX)
             {
@@ -328,7 +339,7 @@ namespace ConvertHelper
                 {
                     targetPath += "_" + INDEX;
                 }
-                SafeCreateDirectory(targetPath);
+                Common.SafeCreateDirectory(targetPath);
                 int count = sounds.Length;
 
                 for (int j = 0; j < count; j++)
@@ -337,42 +348,6 @@ namespace ConvertHelper
                     sounds[j].WriteFile(Path.Combine(targetPath, Scharfrichter.Codec.Util.ConvertToBMEString(sampleIndex, 4) + @".wav"), volume);
                 }
             }
-        }
-
-        /// <summary>
-        /// replace prohibited characters for windows systems
-        /// </summary>
-        /// <param name="nameInfo"></param>
-        /// <returns></returns>
-        static private string nameReplace(string nameInfo)
-        {
-            nameInfo = nameInfo.Replace(":", "：");
-            nameInfo = nameInfo.Replace("/", "_");
-            nameInfo = nameInfo.Replace("?", "_");
-            nameInfo = nameInfo.Replace("\\", "_");
-            nameInfo = nameInfo.Replace("\"", "_");
-            nameInfo = nameInfo.Replace("*", "_");
-            return nameInfo;
-        }
-
-        static private Configuration LoadDB()
-        {
-            Configuration config = Configuration.ReadFile(databaseFileName);
-            return config;
-        }
-
-        /// <summary>
-        /// Create folder if folder does not exist
-        /// </summary>
-        /// <param name="path"></param>
-        /// <returns></returns>
-        public static DirectoryInfo SafeCreateDirectory(string path)
-        {
-            if (Directory.Exists(path))
-            {
-                return null;
-            }
-            return Directory.CreateDirectory(path);
         }
     }
 }

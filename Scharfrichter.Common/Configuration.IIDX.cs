@@ -22,6 +22,7 @@ namespace Scharfrichter.Common
             config["BMS"].SetDefaultString("MovieFolder", "");
             config["BMS"].SetDefaultString("Output", "");
             config["BMS"].SetDefaultBool("IsSameFolderMovie", false);
+            config["BMS"].SetDefaultBool("IsUseRenderAutoTip", false);
             config["IIDX"].SetDefaultString("Difficulty0", "3");
             config["IIDX"].SetDefaultString("Difficulty1", "2");
             config["IIDX"].SetDefaultString("Difficulty2", "4");

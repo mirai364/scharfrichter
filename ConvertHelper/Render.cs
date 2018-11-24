@@ -12,12 +12,26 @@ using System.Text;
 
 namespace ConvertHelper
 {
+
     static public class Render
     {
         static public void RenderWAV(string[] inArgs, long unitNumerator, long unitDenominator)
         {
+            // configuration
+            Configuration config = Configuration.LoadIIDXConfig(Common.configFileName);
+            Configuration db = Common.LoadDB();
+            bool idUseRenderAutoTip = config["BMS"].GetBool("IsUseRenderAutoTip");
+            Dictionary<int, int> ignore = new Dictionary<int, int>();
+            if (idUseRenderAutoTip)
+            {
+                ignore.Add(1, 1);
+                ignore.Add(2, 2);
+            }
+
             Splash.Show("Render");
             Console.WriteLine("Timing: " + unitNumerator.ToString() + "/" + unitDenominator.ToString());
+
+            string output = config["BMS"]["Output"];
 
             string[] args;
 
@@ -48,7 +62,8 @@ namespace ConvertHelper
             Sound[] sounds = null;
             Chart[] charts = null;
             bool cancel = false;
-            string outFile = null;
+            string outFile = "0001";
+            string targetPath = null;
 
             foreach (string filename in args)
             {
@@ -64,10 +79,11 @@ namespace ConvertHelper
                             {
                                 Console.WriteLine();
                                 Console.WriteLine("Valid charts:");
-                                outFile = Path.Combine(Path.GetDirectoryName(filename), Path.GetFileNameWithoutExtension(filename));
+                                if (!idUseRenderAutoTip)
+                                    outFile = Path.Combine(Path.GetDirectoryName(filename), Path.GetFileNameWithoutExtension(filename));
                                 using (MemoryStream mem = new MemoryStream(File.ReadAllBytes(filename)))
                                 {
-                                    charts = Bemani1.Read(mem, unitNumerator, unitDenominator).Charts;
+                                    charts = Bemani1.Read(mem, unitNumerator, unitDenominator, ignore).Charts;
                                     for (int i = 0; i < charts.Length; i++)
                                     {
                                         if (charts[i] != null)
@@ -92,6 +108,29 @@ namespace ConvertHelper
 
             if (!cancel && (sounds != null) && (charts != null))
             {
+
+                if (idUseRenderAutoTip)
+                {
+                    string IIDXDBName = Path.GetFileNameWithoutExtension(args[1]);
+                    string title = IIDXDBName;
+                    string version = IIDXDBName.Substring(0, 2);
+                    string INDEX = null;
+                    if (IIDXDBName.Length > 5)
+                    {
+                        INDEX = IIDXDBName.Substring(5);
+                        IIDXDBName = IIDXDBName.Substring(0, 5);
+                    }
+                    while (IIDXDBName.StartsWith("0"))
+                        IIDXDBName = IIDXDBName.Substring(1);
+
+                    if (db[IIDXDBName]["TITLE"] != "")
+                    {
+                        title = db[IIDXDBName]["TITLE"];
+                        title = Common.nameReplace(title);
+                    }
+                    targetPath = Path.Combine(output, version, title, "sounds");
+                }
+
                 List<byte[]> rendered = new List<byte[]>();
                 List<int> renderedIndex = new List<int>();
 
@@ -134,8 +173,17 @@ namespace ConvertHelper
 
                     if (!match)
                     {
-                        Console.WriteLine("Writing unique " + k.ToString());
-                        File.WriteAllBytes(outFile + "-" + Util.ConvertToDecimalString(k, 2) + ".wav", data);
+                        if (idUseRenderAutoTip)
+                        {
+                            Console.WriteLine("Writing unique " + (k < 6 ? 1 : 3) + config["IIDX"].GetValue("DIFFICULTY" + k.ToString()));
+                            Common.SafeCreateDirectory(targetPath);
+                            File.WriteAllBytes(targetPath + "\\" + outFile + "-" + (k < 6 ? 1 : 3) + config["IIDX"].GetValue("DIFFICULTY" + k.ToString()) + ".wav", data);
+                        }
+                        else
+                        {
+                            Console.WriteLine("Writing unique " + k.ToString());
+                            File.WriteAllBytes(outFile + " -" + Util.ConvertToDecimalString(k, 2) + ".wav", data);
+                        }
                         rendered.Add(data);
                         renderedIndex.Add(k);
                     }

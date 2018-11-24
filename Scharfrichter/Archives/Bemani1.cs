@@ -33,7 +33,7 @@ namespace Scharfrichter.Codec.Archives
             }
         }
 
-        public static Bemani1 Read(Stream source, long unitNumerator, long unitDenominator)
+        public static Bemani1 Read(Stream source, long unitNumerator, long unitDenominator, Dictionary<int, int> ignore)
         {
             Bemani1 result = new Bemani1();
             long offsetBase = source.Position;
@@ -58,7 +58,7 @@ namespace Scharfrichter.Codec.Archives
                     byte[] chartData = reader.ReadBytes(length[i]);
                     using (MemoryStream mem = new MemoryStream(chartData))
                     {
-                        chart = BeatmaniaIIDXPC.Read(mem);
+                        chart = BeatmaniaIIDXPC.Read(mem, ignore);
                         chart.TickRate = new Fraction(unitNumerator, unitDenominator);
 
                         // fill in the metric offsets

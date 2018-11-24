@@ -297,11 +297,6 @@ namespace ConvertHelper
                         // something weird happened
                     }
                 }
-                string keyset = "0";
-                if (chart.Tags.ContainsKey("KEYSET"))
-                    keyset = chart.Tags["KEYSET"];
-
-                bms.GenerateSampleTags(keyset);
                 bms.Write(mem, true);
 
                 File.WriteAllBytes(output, mem.ToArray());

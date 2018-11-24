@@ -22,6 +22,7 @@ namespace Scharfrichter.Codec.Archives
 
         private Chart[] charts = new Chart[] { null };
         private int[] sampleMap;
+        private Dictionary<int, int> reSampleMap = new Dictionary<int, int>();
 
         public BMS()
         {
@@ -55,14 +56,9 @@ namespace Scharfrichter.Codec.Archives
             SampleMap = usedSamples;
         }
 
-        public void GenerateSampleTags(string keyset = "0")
+        public void GenerateReSampleTags(string keyset = "0")
         {
             Chart chart = charts[0];
-
-            if (chart.UsedSamples().Length > 1293)
-            {
-                Console.WriteLine("WARNING: More than 1293 samples.");
-            }
             string targetFolder;
             if (keyset == "0")
             {
@@ -73,13 +69,15 @@ namespace Scharfrichter.Codec.Archives
                 targetFolder = "sounds_" + keyset + "\\";
             }
 
-            for (int i = 0; i < 1294; i++)
+            foreach (KeyValuePair<int, int> pair in reSampleMap)
             {
-                int index = sampleMap[i];
-                if (index != 0)
+                if (pair.Value > 1293)
                 {
-                    chart.Tags["WAV" + Util.ConvertToBMEString(i, 2)] = targetFolder + Util.ConvertToBMEString(index, 4) + ".wav";
+                    Console.WriteLine("WARNING: More than 1293 samples");
+                    continue;
                 }
+                chart.Tags["WAV" + Util.ConvertToBMEString(pair.Value + 1, 2)] = targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".wav";
+                //Console.WriteLine("WAV" + Util.ConvertToBMEString(pair.Value + 1, 2) + " " + targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".wav");
             }
         }
 
@@ -356,14 +354,19 @@ namespace Scharfrichter.Codec.Archives
             Chart chart = charts[0];
 
             MemoryStream header = new MemoryStream();
+            MemoryStream expansion = new MemoryStream();
             MemoryStream body = new MemoryStream();
 
             StreamWriter headerWriter = new StreamWriter(header);
+            StreamWriter expansionWriter = new StreamWriter(expansion);
             StreamWriter bodyWriter = new StreamWriter(body);
 
             // note count header. this can assist people tagging.
             headerWriter.WriteLine("; 1P = " + chart.NoteCount(1).ToString());
             headerWriter.WriteLine("; 2P = " + chart.NoteCount(2).ToString());
+            headerWriter.WriteLine("");
+            headerWriter.WriteLine("");
+            headerWriter.WriteLine("* ----------------------HEADER FIELD");
             headerWriter.WriteLine("");
 
             // create RANK metadata
@@ -371,50 +374,42 @@ namespace Scharfrichter.Codec.Archives
 
             // create BPM metadata
             chart.Tags["BPM"] = Math.Round((double)(chart.DefaultBPM), 3).ToString();
-
             // write all metadata
             chart.Tags["LNOBJ"] = "ZZ";
-            foreach (KeyValuePair<string, string> tag in chart.Tags)
-            {
-                if (tag.Value != null && tag.Value.Length > 0)
-                {
-                    if (tag.Key == "VIDEO" || tag.Key == "VIDEODELAY" || tag.Key == "KEYSET")
-                    {
-                        continue;
-                    }
-                    headerWriter.WriteLine("#" + tag.Key + " " + tag.Value);
-                }
-                else
-                {
-                    headerWriter.WriteLine("#" + tag.Key);
-                }
-            }
 
+            // EXPANSION FIELD
+            expansionWriter.WriteLine("");
+            expansionWriter.WriteLine("");
+            expansionWriter.WriteLine("*---------------------- EXPANSION FIELD");
+            expansionWriter.WriteLine("PREVIEW preview.wav");
             if (chart.Tags.ContainsKey("VIDEO"))
             {
-                headerWriter.WriteLine("");
-                headerWriter.WriteLine("*---------------------- EXPANSION FIELD");
                 if (chart.isSameFolderMovie)
                 {
-                    headerWriter.WriteLine("#BMP01 " + chart.Tags["VIDEO"] + ".wmv");
+                    expansionWriter.WriteLine("BMP01 " + chart.Tags["VIDEO"] + ".wmv");
                 }
                 else
                 {
-                    headerWriter.WriteLine("#BMP01 ..\\..\\Movie\\" + chart.Tags["VIDEO"] + ".wmv");
+                    expansionWriter.WriteLine("BMP01 ..\\..\\Movie\\" + chart.Tags["VIDEO"] + ".wmv");
                 }
                 if (chart.Tags.ContainsKey("VIDEODELAY"))
                 {
                     double videoDelay = Int32.Parse(chart.Tags["VIDEODELAY"]);
+                    int section = 0;
+                    double BPM = Math.Round((double)(chart.DefaultBPM), 3);
                     if (videoDelay < 0)
                     {
-                        videoDelay *= -1;
+                        section = (int)Math.Round(BPM * videoDelay / chart.quantizeNotes * (chart.quantizeNotes / 192.0f) * 2.25f * 1.3125f, MidpointRounding.AwayFromZero) + chart.quantizeNotes * 2;
                         DelayPoint = 2;
+                        if (section >= chart.quantizeNotes)
+                        {
+                            section -= chart.quantizeNotes;
+                            DelayPoint = 1;
+                        }
                     }
-                    int section = (int)Math.Round(videoDelay * chart.quantizeNotes * 0.008517663865, MidpointRounding.AwayFromZero);
-                    if (section > chart.quantizeNotes)
+                    else
                     {
-                        section -= chart.quantizeNotes;
-                        DelayPoint = 1;
+                        section = (int)Math.Round(BPM * videoDelay / chart.quantizeNotes * (chart.quantizeNotes / 192.0f) * 2.25f, MidpointRounding.AwayFromZero);
                     }
                     string BGAstringData = "#00004:";
                     for (int i = 0; i < chart.quantizeNotes; i++)
@@ -429,14 +424,11 @@ namespace Scharfrichter.Codec.Archives
                         }
 
                     }
-                    headerWriter.WriteLine(BGAstringData);
+                    bodyWriter.WriteLine(BGAstringData);
                 }
-                headerWriter.WriteLine("#PREVIEW preview.wav");
-                headerWriter.WriteLine("");
-                headerWriter.WriteLine("");
-                headerWriter.WriteLine("*---------------------- MAIN DATA FIELD");
-                headerWriter.WriteLine("");
             }
+            expansionWriter.WriteLine("");
+            expansionWriter.WriteLine("");
 
             chart.ClearUsed();
 
@@ -593,14 +585,10 @@ namespace Scharfrichter.Codec.Archives
                             int count = values.Length;
                             int entryMapIndex = (int)(double)entry.Value;
 
-                            if (entryMapIndex < 1 || entryMapIndex > 1293)
-                                entryMapIndex = 1294;
-                            else
-                            {
-                                entryMapIndex = Array.IndexOf<int>(sampleMap, entryMapIndex);
-                                if (entryMapIndex < 1 || entryMapIndex > 1293)
-                                    entryMapIndex = 1294;
-                            }
+                            if (!reSampleMap.ContainsKey(entryMapIndex))
+                                reSampleMap.Add(entryMapIndex, reSampleMap.Count());
+                            reSampleMap.TryGetValue(entryMapIndex, out entryMapIndex);
+                            ++entryMapIndex;
 
                             if (offset >= 0 && offset < count && !entry.Used)
                             {
@@ -630,14 +618,10 @@ namespace Scharfrichter.Codec.Archives
                             int count = values.Length;
                             int entryMapIndex = (int)(double)entry.Value;
 
-                            if (entryMapIndex < 1 || entryMapIndex > 1293)
-                                entryMapIndex = 1294;
-                            else
-                            {
-                                entryMapIndex = Array.IndexOf<int>(sampleMap, entryMapIndex);
-                                if (entryMapIndex < 1 || entryMapIndex > 1293)
-                                    entryMapIndex = 1294;
-                            }
+                            if (!reSampleMap.ContainsKey(entryMapIndex))
+                                reSampleMap.Add(entryMapIndex, reSampleMap.Count());
+                            reSampleMap.TryGetValue(entryMapIndex, out entryMapIndex);
+                            ++entryMapIndex;
 
                             if (offset >= 0 && offset < count && !entry.Used)
                             {
@@ -746,6 +730,30 @@ namespace Scharfrichter.Codec.Archives
                     currentOperation++;
             }
 
+            string keyset = "0";
+            if (chart.Tags.ContainsKey("KEYSET"))
+                keyset = chart.Tags["KEYSET"];
+            GenerateReSampleTags(keyset);
+
+            foreach (KeyValuePair<string, string> tag in chart.Tags)
+            {
+                if (tag.Value != null && tag.Value.Length > 0)
+                {
+                    if (tag.Key == "VIDEO" || tag.Key == "VIDEODELAY" || tag.Key == "KEYSET")
+                    {
+                        continue;
+                    }
+                    headerWriter.WriteLine("#" + tag.Key + " " + tag.Value);
+                }
+                else
+                {
+                    headerWriter.WriteLine("#" + tag.Key);
+                }
+            }
+
+            expansionWriter.WriteLine("*---------------------- MAIN DATA FIELD");
+            expansionWriter.WriteLine("");
+            expansionWriter.WriteLine("");
             // write measure lengths
             foreach (KeyValuePair<int, Fraction> ml in chart.MeasureLengths)
             {
@@ -757,14 +765,16 @@ namespace Scharfrichter.Codec.Archives
                         line = "0" + line;
 
                     line = "#" + line + "02:" + ((double)ml.Value).ToString();
-                    headerWriter.WriteLine(line);
+                    expansionWriter.WriteLine(line);
                 }
             }
             
             // finalize data and dump to stream
             headerWriter.Flush();
+            expansionWriter.Flush();
             bodyWriter.Flush();
             writer.Write(header.ToArray());
+            writer.Write(expansion.ToArray());
             writer.Write(body.ToArray());
             writer.Flush();
         }

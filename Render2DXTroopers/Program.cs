@@ -18,7 +18,7 @@ namespace Render2DXTroopers
                 args = new string[] { baseName + ".1", baseName + ".2dx" };
             }
 
-            ConvertHelper.Render.RenderWAV(args, 1, 1000);
+            ConvertHelper.Render.RenderWAV(args, 1, 1000, false);
         }
     }
 }

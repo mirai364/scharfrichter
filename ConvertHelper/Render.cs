@@ -15,12 +15,13 @@ namespace ConvertHelper
 
     static public class Render
     {
-        static public void RenderWAV(string[] inArgs, long unitNumerator, long unitDenominator)
+        static public void RenderWAV(string[] inArgs, long unitNumerator, long unitDenominator, bool idUseRenderAutoTip)
         {
             // configuration
             Configuration config = Configuration.LoadIIDXConfig(Common.configFileName);
             Configuration db = Common.LoadDB();
-            bool idUseRenderAutoTip = config["BMS"].GetBool("IsUseRenderAutoTip");
+            if (config["BMS"].GetBool("ForceRenderAutoTip"))
+                idUseRenderAutoTip = true;
             Dictionary<int, int> ignore = new Dictionary<int, int>();
             if (idUseRenderAutoTip)
             {
@@ -69,13 +70,9 @@ namespace ConvertHelper
             string version = IIDXDBName.Substring(0, 2);
 
             if (IIDXDBName.Contains("pre"))
-            {
                 IIDXDBName = IIDXDBName.Substring(0, 5);
-            }
             if (IIDXDBName.Length > 5)
-            {
                 IIDXDBName = IIDXDBName.Substring(0, 5);
-            }
             while (IIDXDBName.StartsWith("0"))
                 IIDXDBName = IIDXDBName.Substring(1);
 
@@ -93,13 +90,9 @@ namespace ConvertHelper
                 string tmp = Path.GetFileNameWithoutExtension(filename);
                 string INDEX = "0";
                 if (tmp.Contains("pre"))
-                {
                     continue;
-                }
                 if (tmp.Length > 5)
-                {
                     INDEX = tmp.Substring(5);
-                }
 
                 if (File.Exists(filename))
                 {
@@ -155,22 +148,18 @@ namespace ConvertHelper
                 {
                     string keySet = "0";
                     if (k < 6)
-                    {
                         keySet = db[IIDXDBName]["KEYSETSP" + config["IIDX"]["DIFFICULTY" + k.ToString()]];
-                    }
                     else if (k < 12)
-                    {
                         keySet = db[IIDXDBName]["KEYSETDP" + config["IIDX"]["DIFFICULTY" + k.ToString()]];
-                    }
                     Chart chart = charts[k];
 
                     if (chart == null)
                         continue;
 
 
-                    Console.WriteLine("");
+                    //Console.WriteLine("");
                     Console.WriteLine("Rendering " + k.ToString());
-                    Console.WriteLine("Use keySet " + keySet);
+                    //Console.WriteLine("Use keySet " + keySet);
                     Sound[] tmpSound;
                     if (!sounds.TryGetValue(keySet, out tmpSound))
                     {

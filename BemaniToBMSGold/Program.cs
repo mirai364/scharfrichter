@@ -14,7 +14,7 @@ namespace BemaniToBMSGold
 
         static void Main(string[] args)
         {
-            BemaniToBMS.Convert(args, unitNumerator, unitDenominator);
+            BemaniToBMS.Convert(args, unitNumerator, unitDenominator, false);
         }
     }
 }

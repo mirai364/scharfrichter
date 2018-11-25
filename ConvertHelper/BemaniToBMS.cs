@@ -14,14 +14,13 @@ namespace ConvertHelper
 {
     static public class BemaniToBMS
     {
-        static public void Convert(string[] inArgs, long unitNumerator, long unitDenominator)
+        static public void Convert(string[] inArgs, long unitNumerator, long unitDenominator, bool idUseRenderAutoTip = false)
         {
             // configuration
             Configuration config = Configuration.LoadIIDXConfig(Common.configFileName);
             Configuration db = Common.LoadDB();
             int quantizeMeasure = config["BMS"].GetValue("QuantizeMeasure");
             int quantizeNotes = config["BMS"].GetValue("QuantizeNotes");
-            bool idUseRenderAutoTip = config["BMS"].GetBool("IsUseRenderAutoTip");
 
             // splash
             Splash.Show("Bemani to BeMusic Script");
@@ -93,7 +92,7 @@ namespace ConvertHelper
                                     Console.WriteLine("Convert AutoTips");
                                     Console.WriteLine(args[i].Remove(args[i].Length - 8));
                                     string[] files = System.IO.Directory.GetFiles(args[i].Remove(args[i].Length - 8), "*", SearchOption.AllDirectories);
-                                    Render.RenderWAV(files, 1, 1000);
+                                    Render.RenderWAV(files, 1, 1000, true);
 
                                     ignore.Add(3, 3);
                                 }
@@ -127,7 +126,7 @@ namespace ConvertHelper
                                     }
                                 }
 
-                                ConvertArchive(archive, config, args[i], version);
+                                ConvertArchive(archive, config, args[i], version, idUseRenderAutoTip);
                             }
                             break;
                         case @".2DX":
@@ -199,19 +198,32 @@ namespace ConvertHelper
             Console.WriteLine("BemaniToBMS finished.");
         }
 
-        static public void ConvertArchive(Archive archive, Configuration config, string filename, string version = "")
+        static public void ConvertArchive(Archive archive, Configuration config, string filename, string version = "", bool idUseRenderAutoTip = false)
         {
+            bool isSucces = false;
             for (int j = 0; j < archive.ChartCount; j++)
             {
                 if (archive.Charts[j] != null)
                 {
                     Console.WriteLine("Converting Chart " + j.ToString());
-                    ConvertChart(archive.Charts[j], config, filename, j, null, version);
+                    isSucces = ConvertChart(archive.Charts[j], config, filename, j, null, version);
+                    if (!isSucces)
+                        break;
                 }
             }
+            if (!isSucces && !idUseRenderAutoTip)
+            {
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("Because the number of sound sources is larger than 1294, change the setting and re - executet");
+                Console.WriteLine("*------------------------------------------------------*");
+                string[] tmpArray = new String[] { filename };
+                Convert(tmpArray, 1, 1000, true);
+            }
+
         }
 
-        static public void ConvertChart(Chart chart, Configuration config, string filename, int index, int[] map, string version = "")
+        static public bool ConvertChart(Chart chart, Configuration config, string filename, int index, int[] map, string version = "")
         {
             if (config == null)
             {
@@ -307,10 +319,13 @@ namespace ConvertHelper
                         // something weird happened
                     }
                 }
-                bms.Write(mem, true);
+                bool isSucces = bms.Write(mem, true);
+                if (!isSucces)
+                    return false;
 
                 File.WriteAllBytes(output, mem.ToArray());
             }
+            return true;
         }
 
         static public void ConvertSounds(Sound[] sounds, string filename, float volume, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "")

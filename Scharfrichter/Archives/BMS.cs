@@ -56,7 +56,7 @@ namespace Scharfrichter.Codec.Archives
             SampleMap = usedSamples;
         }
 
-        public void GenerateReSampleTags(string keyset = "0", string rendarWavName = "")
+        public bool GenerateReSampleTags(string keyset = "0", string rendarWavName = "")
         {
             Chart chart = charts[0];
             string targetFolder;
@@ -74,7 +74,7 @@ namespace Scharfrichter.Codec.Archives
                 if (pair.Value > 1293)
                 {
                     Console.WriteLine("WARNING: More than 1293 samples");
-                    continue;
+                    return false;
                 }
                 chart.Tags["WAV" + Util.ConvertToBMEString(pair.Value + 1, 2)] = targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".wav";
                 //Console.WriteLine("WAV" + Util.ConvertToBMEString(pair.Value + 1, 2) + " " + targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".wav");
@@ -84,6 +84,7 @@ namespace Scharfrichter.Codec.Archives
             {
                 chart.Tags["WAV01"] = targetFolder + rendarWavName + ".wav";
             }
+            return true;
         }
 
         static public BMS Read(Stream source)
@@ -351,7 +352,7 @@ namespace Scharfrichter.Codec.Archives
             }
         }
 
-        public void Write(Stream target, bool enableBackspinScratch)
+        public bool Write(Stream target, bool enableBackspinScratch)
         {
             int DelayPoint = 0;
             bool idUseRenderAutoTip = false;
@@ -755,7 +756,9 @@ namespace Scharfrichter.Codec.Archives
             string keyset = "0";
             if (chart.Tags.ContainsKey("KEYSET"))
                 keyset = chart.Tags["KEYSET"];
-            GenerateReSampleTags(keyset, rendarWavName);
+            bool isSucces = GenerateReSampleTags(keyset, rendarWavName);
+            if (!isSucces)
+                return false;
 
             foreach (KeyValuePair<string, string> tag in chart.Tags)
             {
@@ -797,6 +800,7 @@ namespace Scharfrichter.Codec.Archives
             writer.Write(expansion.ToArray());
             writer.Write(body.ToArray());
             writer.Flush();
+            return true;
         }
     }
 }

@@ -352,6 +352,21 @@ namespace Scharfrichter.Codec.Archives
             }
         }
 
+        private int getCommonDivisor(int value, int quantizeNotes)
+        {
+            if (value == 0) return quantizeNotes;
+            int a = value;
+            int b = quantizeNotes;
+            int c;
+            while (true)
+            {
+                c = b % a; if (c == 0) break;
+                b = a;
+                a = c;
+            }
+            return a;
+        }
+
         public bool Write(Stream target, bool enableBackspinScratch)
         {
             int DelayPoint = 0;
@@ -419,9 +434,13 @@ namespace Scharfrichter.Codec.Archives
                         section = (int)Math.Round(BPM * videoDelay / chart.quantizeNotes * (chart.quantizeNotes / 192.0f) * 2.25f, MidpointRounding.AwayFromZero);
                     }
                     string BGAstringData = "#00004:";
-                    for (int i = 0; i < chart.quantizeNotes; i++)
+                    int commonDivisor = getCommonDivisor(section, chart.quantizeNotes);
+                    int num = chart.quantizeNotes / commonDivisor;
+                    int sec = section;
+                    if (section != 0) sec = section / commonDivisor;
+                    for (int i = 0; i < num; i++)
                     {
-                        if (section == i)
+                        if (sec == i)
                         {
                             BGAstringData += "01";
                         }

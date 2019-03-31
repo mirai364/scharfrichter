@@ -323,7 +323,8 @@ namespace ConvertHelper
                 if (!isSucces)
                     return false;
 
-                File.WriteAllBytes(output, mem.ToArray());
+                //File.WriteAllBytes(output, mem.ToArray());
+                File.WriteAllText(output, Encoding.UTF8.GetString(mem.ToArray()), Encoding.GetEncoding(932));
             }
             return true;
         }

@@ -15,12 +15,13 @@ namespace ConvertHelper
     static public class BemaniToSM
     {
         private const string configFileName = "Convert";
-        private const string databaseFileName = "DDRDB";
+        private const string databaseFileName = "musicdb";
 
         static public void Convert(string[] inArgs)
         {
             // configuration
-            Configuration config = LoadConfig();
+            Configuration config = Configuration.LoadDDRConfig(Common.configFileName);
+            Configuration db = LoadDB();
 
             // splash
             Splash.Show( "Bemani To Stepmania" );
@@ -46,6 +47,7 @@ namespace ConvertHelper
 
             string iSelect = "";
 
+            /*
             foreach( string filename in args )
             {
                 if( File.Exists(filename) && Path.GetExtension(filename).ToUpper() == ".SSQ" )
@@ -60,6 +62,7 @@ namespace ConvertHelper
                     break;
                 }
             }
+            */
 
             // process
             foreach( string filename in args )
@@ -108,13 +111,17 @@ namespace ConvertHelper
                                 string iTitleTranslit = "";
                                 string iArtistTranslit = "";
                                 string iCDTitle = "";
+                                int iMovieFlag = 0;
+                                int iMovieOffset = 0;
 
-                                using( FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.ReadWrite) )
+                                using ( FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.ReadWrite) )
                                 {
                                     BemaniSSQ ssq = BemaniSSQ.Read(fs, 0x1000);
                                     StepmaniaSM sm = new StepmaniaSM();
 
-                                    if( iSelect == "y" )
+                                    string songId = Path.GetFileNameWithoutExtension(@filename);
+
+                                    if ( iSelect == "y" )
                                     {
                                         Console.WriteLine();
                                         Console.Write("TITLE: ");
@@ -135,26 +142,32 @@ namespace ConvertHelper
                                         Console.WriteLine();
                                         Console.WriteLine("Input difficulty ratings for song " + iTitle + " below.");
                                         Console.WriteLine();
+                                    } else if (db[songId]["TITLE"] != "")
+                                    {
+                                        iTitle = db[songId]["TITLE"];
+                                        iArtist = db[songId]["ARTIST"];
+                                        iMovieFlag = db[songId].GetValue("MOVIE");
+                                        iMovieOffset = db[songId].GetValue("MOVIEOFFSET");
+                                        //iTitleTranslit = db[songId]["TITLE"];
+                                        //iArtistTranslit = db[songId]["ARTIST"];
+                                        Console.WriteLine();
+                                        Console.WriteLine("Input difficulty ratings for song " + iTitle + " below.");
+                                        Console.WriteLine();
                                     }
 
-                                    sm.Tags["SongID"] = Path.GetFileNameWithoutExtension(@filename);
+                                    sm.Tags["SongID"] = songId;
                                     sm.Tags["TITLE"] = iTitle;
                                     sm.Tags["ARTIST"] = iArtist;
+                                    if( iTitleTranslit != "" )
+                                        sm.Tags["TITLETRANSLIT"] = iTitleTranslit;
+                                    if( iArtistTranslit != "" )
+                                        sm.Tags["ARTISTTRANSLIT"] = iArtistTranslit;
 
-                                    if( iSelect == "y" )
+                                    if (iMovieFlag > 0)
                                     {
-                                        if( iTitleTranslit != "" )
-                                            sm.Tags["TITLETRANSLIT"] = iTitleTranslit;
-
-                                        if( iArtistTranslit != "" )
-                                            sm.Tags["ARTISTTRANSLIT"] = iArtistTranslit;
+                                        sm.Tags["BGCHANGES"] = ((float)iMovieOffset / 1000) + "=" + songId + ".mpg=1.000=1=1=0";
                                     }
-                                    else
-                                    {
-                                        sm.Tags["TITLETRANSLIT"] = "";
-                                        sm.Tags["ARTISTTRANSLIT"] = "";
-                                    }
-
+                                    /*
                                     if( iTitleTranslit == "" )
                                         sm.Tags["BANNER"] = iTitle + ".png";
                                     else
@@ -171,9 +184,12 @@ namespace ConvertHelper
                                         sm.Tags["MUSIC"] = iTitle + ".ogg";
                                     else
                                         sm.Tags["MUSIC"] = iTitleTranslit + ".ogg";
+                                    */
+                                    sm.Tags["MUSIC"] = songId + ".wav";
+                                    sm.Tags["PREVIEW"] = songId + "_s.wav";
 
-                                    sm.Tags["SAMPLESTART"] = "20";
-                                    sm.Tags["SAMPLELENGTH"] = "15";
+                                    //sm.Tags["SAMPLESTART"] = "20";
+                                    //sm.Tags["SAMPLELENGTH"] = "15";
 
                                     sm.CreateTempoTags( ssq.TempoEntries.ToArray() );
 
@@ -248,6 +264,21 @@ namespace ConvertHelper
                                                         {
                                                             Console.Write(ToUpperFirstLetter(gameType.Replace("dance-", "")) + "-" + difText + ": ");
                                                             meter = Console.ReadLine();
+                                                        } else if (db[songId]["TITLE"] != "")
+                                                        {
+                                                            int player = 1;
+                                                            switch (chart.Tags["Panels"])
+                                                            {
+                                                                case "4": player = 1; break;
+                                                                case "6": player = 1; break;
+                                                                case "8": player = 3; break;
+                                                                default: player = 3; break;
+                                                            }
+                                                            meter = db[sm.Tags["SongID"]]["DIFFLV" + player + config["DDR"]["Difficulty" + chart.Tags["Difficulty"]]];
+                                                            /*
+                                                            Console.Write(ToUpperFirstLetter(gameType.Replace("dance-", "")) + "-" + difText + ": ");
+                                                            Console.WriteLine(db[sm.Tags["SongID"]]["DIFFLV" + player + config["DDR"]["Difficulty" + chart.Tags["Difficulty"]]]);
+                                                            */
                                                         }
 
                                                         if( meter == "" )
@@ -293,31 +324,9 @@ namespace ConvertHelper
             return new string(letters);
         }
 
-        static private Configuration LoadConfig()
-        {
-            Configuration config = Configuration.ReadFile(configFileName);
-            config["SM"].SetDefaultValue( "QuantizeNotes", 192 );
-            config["SM"].SetDefaultString( "DanceMode4", "dance-single" );
-            config["SM"].SetDefaultString( "DanceMode6", "dance-solo" );
-            config["SM"].SetDefaultString( "DanceMode8", "dance-double" );
-            config["SM"].SetDefaultString( "DanceModeCouple", "dance-couple" );
-            config["SM"].SetDefaultString( "Difficulty0", "Challenge" );
-            config["SM"].SetDefaultString( "Difficulty1", "Easy" );
-            config["SM"].SetDefaultString( "Difficulty2", "Medium" );
-            config["SM"].SetDefaultString( "Difficulty3", "Hard" );
-            config["SM"].SetDefaultString( "Difficulty4", "Beginner" );
-            config["SM"].SetDefaultString( "Difficulty5", "Edit" );
-            config["DDR"].SetDefaultString( "Difficulty1", "1" );
-            config["DDR"].SetDefaultString( "Difficulty2", "2" );
-            config["DDR"].SetDefaultString( "Difficulty3", "3" );
-            config["DDR"].SetDefaultString( "Difficulty4", "4" );
-            config["DDR"].SetDefaultString( "Difficulty6", "0" );
-            return config;
-        }
-
         static private Configuration LoadDB()
         {
-            Configuration config = Configuration.ReadFile(databaseFileName);
+            Configuration config = Configuration.ReadFile(databaseFileName, "xml");
             return config;
         }
     }

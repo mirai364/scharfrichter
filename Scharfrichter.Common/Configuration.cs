@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Xml;
 
 namespace Scharfrichter.Common
 {
@@ -37,11 +38,11 @@ namespace Scharfrichter.Common
             }
         }
 
-        static public string ConfigPath(string configName)
+        static public string ConfigPath(string configName, string extension = "txt")
         {
             string result = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             result = Path.Combine(result, @"Config");
-            result = Path.Combine(result, configName + ".txt");
+            result = Path.Combine(result, configName + "." + extension);
             return result;
         }
 
@@ -92,18 +93,124 @@ namespace Scharfrichter.Common
             }
         }
 
-        static public Configuration ReadFile(string configName)
+        static public Configuration ReadFile(string configName, string extension = "txt")
         {
-            string configFile = Configuration.ConfigPath(configName);
+            string configFile = Configuration.ConfigPath(configName, extension);
             if (File.Exists(configFile))
             {
-                using (FileStream fs = new FileStream(configFile, FileMode.Open, FileAccess.Read))
-                    return Read(fs);
+                if (extension.Equals("txt"))
+                {
+                    using (FileStream fs = new FileStream(configFile, FileMode.Open, FileAccess.Read))
+                        return Read(fs);
+                }
+                else if (extension.Equals("xml"))
+                {
+                    Encoding enc = Encoding.Unicode;
+                    Configuration result = new Configuration(enc);
+
+                    var xmlDoc = new XmlDocument();
+                    xmlDoc.Load(configFile);
+                    var musicdb = xmlDoc.SelectNodes("mdb/music");
+
+                    foreach (XmlNode music in musicdb)
+                    {
+                        var basename = music.SelectSingleNode("basename").InnerText;
+                        foreach (XmlNode tmp in music.ChildNodes)
+                        {
+                            string type = "";
+                            int count = 0;
+                            if (tmp.Attributes["__type"] != null)
+                            {
+                                type = tmp.Attributes["__type"].InnerText;
+                            }
+                            if (tmp.Attributes["__count"] != null)
+                            {
+                                count = int.Parse(tmp.Attributes["__count"].InnerText);
+                            }
+
+                            string title = tmp.Name.ToUpper();
+                            string value = tmp.InnerText;
+
+                            if (count > 0)
+                            {
+                                string[] arr = value.Split(' ');
+                                for (int i=0; i < count; i++)
+                                {
+                                    int player = 1;
+                                    int level = 0;
+                                    switch (i)
+                                    {
+                                        case 0:
+                                            player = 1;
+                                            level = 4;
+                                            break;
+                                        case 1:
+                                            player = 1;
+                                            level = 1;
+                                            break;
+                                        case 2:
+                                            player = 1;
+                                            level = 2;
+                                            break;
+                                        case 3:
+                                            player = 1;
+                                            level = 3;
+                                            break;
+                                        case 4:
+                                            player = 1;
+                                            level = 0;
+                                            break;
+                                        case 5:
+                                            player = 3;
+                                            level = 4;
+                                            break;
+                                        case 6:
+                                            player = 3;
+                                            level = 1;
+                                            break;
+                                        case 7:
+                                            player = 3;
+                                            level = 2;
+                                            break;
+                                        case 8:
+                                            player = 3;
+                                            level = 3;
+                                            break;
+                                        case 9:
+                                            player = 3;
+                                            level = 0;
+                                            break;
+                                        default:
+                                            player = 1;
+                                            level = 0;
+                                            break;
+                                    }
+                                    result[basename].SetValue(title + player + level, int.Parse(arr[i]));
+                                }
+                            } else
+                            {
+                                switch (type)
+                                {
+                                    case "u8":
+                                        result[basename].SetValue(title, int.Parse(value));
+                                        break;
+                                    case "u16":
+                                        result[basename].SetValue(title, int.Parse(value));
+                                        break;
+                                    case "u32":
+                                        result[basename].SetValue(title, int.Parse(value));
+                                        break;
+                                    default:
+                                        result[basename].SetString(title, value);
+                                        break;
+                                }
+                            }
+                        }
+                    }
+                    return result;
+                }
             }
-            else
-            {
-                return new Configuration();
-            }
+            return new Configuration();
         }
 
         public void Write(Stream target)

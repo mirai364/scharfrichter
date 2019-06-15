@@ -56,6 +56,7 @@
     <Compile Include="Archives\BemaniSSP.cs" />
     <Compile Include="Archives\BemaniSSQ.cs" />
     <Compile Include="Archives\BMS.cs" />
+    <Compile Include="Archives\AdpcmWaveFormat.cs" />
     <Compile Include="Archives\DJMain.cs" />
     <Compile Include="Archives\Firebeat.cs" />
     <Compile Include="Archives\Gzip.cs" />

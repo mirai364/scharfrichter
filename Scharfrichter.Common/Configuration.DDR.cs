@@ -26,6 +26,8 @@ namespace Scharfrichter.Common
             config["DDR"].SetDefaultString( "Difficulty3", "3" );
             config["DDR"].SetDefaultString( "Difficulty4", "4" );
             config["DDR"].SetDefaultString( "Difficulty6", "0" );
+            config["SM"].SetDefaultString("MovieFolder", "");
+            config["SM"].SetDefaultString("Output", "");
             return config;
         }
 

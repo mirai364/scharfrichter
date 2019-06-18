@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace ConvertHelper
 {
@@ -16,6 +17,31 @@ namespace ConvertHelper
     {
         private const string configFileName = "Convert";
         private const string databaseFileName = "musicdb";
+        public struct Header
+        {
+            public int FilePathAddrStart { get; }
+            public int FileAddrStart { get; }
+            public int FileType { get; }
+            public int FileSize { get; }
+            public string FilePath { get; set; }
+
+            public Header(BinaryReader reader)
+            {
+                FilePathAddrStart = reader.ReadInt32();
+                FileAddrStart = reader.ReadInt32();
+                FileType = reader.ReadInt32();
+                FileSize = reader.ReadInt32();
+                FilePath = "";
+            }
+
+            public void Print()
+            {
+                Console.WriteLine("FilePathAddr " + FilePathAddrStart.ToString("X"));
+                Console.WriteLine("FileStartAddr " + FileAddrStart.ToString("X"));
+                Console.WriteLine("FileEndAddr " + (FileAddrStart + FileSize).ToString("X"));
+                Console.WriteLine("FileType " + FileType);
+            }
+        }
 
         static public void Convert(string[] inArgs)
         {
@@ -45,35 +71,84 @@ namespace ConvertHelper
                 Console.WriteLine( "SSQ, XWB" );
             }
 
-            string iSelect = "";
-
-            /*
-            foreach( string filename in args )
-            {
-                if( File.Exists(filename) && Path.GetExtension(filename).ToUpper() == ".SSQ" )
-                {
-                    Console.WriteLine();
-                    Console.Write( "At least one ssq files detected." );
-                    Console.WriteLine();
-                    Console.Write( "Enable manual fill-up simfile data?" );
-                    Console.WriteLine();
-                    Console.Write( "Input y for Yes, ENTER for No: ");
-                    iSelect = Console.ReadLine();
-                    break;
-                }
-            }
-            */
+            string outputFolder = config["SM"]["Output"];
+            string movieFolder = config["SM"]["MovieFolder"];
 
             // process
-            foreach( string filename in args )
+            foreach ( string filename in args )
             {
                 if( File.Exists(filename) )
                 {
                     Console.WriteLine();
                     Console.WriteLine( "Processing File: " + filename );
+                    string directory = Path.GetDirectoryName(filename);
+                    if (outputFolder != "")
+                        directory = outputFolder;
 
-                    switch( Path.GetExtension(filename).ToUpper() )
+                    switch ( Path.GetExtension(filename).ToUpper() )
                     {
+                        case @".ARC":
+                            {
+                                using (FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                                {
+                                    Console.WriteLine("Reading ARC File");
+
+                                    string songId = Path.GetFileNameWithoutExtension(@filename);
+                                    string title = "";
+                                    string targetPath = directory;
+                                    string trimSongId = songId.Split('_')[0].Trim();
+                                    if (songId.Contains("_jk") && db[trimSongId]["TITLE"] != "")
+                                    {
+                                        title = db[trimSongId]["TITLE"];
+                                        title = Common.nameReplace(title);
+                                        string series = db[trimSongId]["series"];
+                                        targetPath = Path.Combine(directory, series, title);
+                                        Common.SafeCreateDirectory(targetPath);
+                                    }
+
+                                    using (BinaryReader reader = new BinaryReader(fs))
+                                    {
+                                        int version = reader.ReadInt32();
+                                        int minVersion = reader.ReadInt32();
+                                        int fileNum = reader.ReadInt32();
+                                        reader.ReadInt32();
+
+                                        var headerTable = new Dictionary<int, Header>();
+                                        for (int i=0;i< fileNum;i++)
+                                        {
+                                            Header data = new Header(reader);
+                                            headerTable.Add(i, data);
+                                        }
+
+                                        int headerEndAddr = headerTable[0].FileAddrStart - 1;
+                                        foreach (KeyValuePair<int, Header> data in headerTable.Reverse())
+                                        {
+                                            reader.BaseStream.Position = data.Value.FilePathAddrStart;
+                                            string filePath = new string(reader.ReadChars(headerEndAddr - data.Value.FilePathAddrStart));
+                                            List<string> list = filePath.Trim().Split('/').ToList();
+                                            string targetFilePath = list.Last();
+                                            targetFilePath = Regex.Replace(targetFilePath, @"[^\w\.@-]", "");
+                                            targetFilePath = Common.nameReplace(targetFilePath);
+ 
+                                             Console.WriteLine(targetFilePath);
+
+                                            reader.BaseStream.Position = data.Value.FileAddrStart;
+                                            Byte[] bytes = reader.ReadBytes(data.Value.FileSize);
+                                            if (title == "")
+                                            {
+                                                list.Remove(list.Last());
+                                                targetPath = Path.Combine(directory, string.Join("\\",list));
+                                                Console.WriteLine(Path.Combine(targetPath, targetFilePath));
+                                                Common.SafeCreateDirectory(targetPath);
+                                            }
+                                            File.WriteAllBytes(Path.Combine(targetPath, targetFilePath), bytes);
+
+                                            headerEndAddr = data.Value.FilePathAddrStart - 1;
+                                        }
+                                    }
+                                }
+                            }
+                            break;
                         case @".XWB":
                             {
                                 using( FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.ReadWrite) )
@@ -82,7 +157,19 @@ namespace ConvertHelper
                                     MicrosoftXWB bank = MicrosoftXWB.Read(fs);
                                     string outPath = Path.Combine( Path.GetDirectoryName(filename), Path.GetFileNameWithoutExtension(filename) );
 
-                                    Directory.CreateDirectory( outPath );
+                                    string songId = Path.GetFileNameWithoutExtension(@filename);
+                                    string title = songId;
+                                    string outTitle = songId;
+                                    string series = "";
+                                    if (db[songId]["TITLE"] != "")
+                                    {
+                                        title = db[songId]["TITLE"];
+                                        outTitle = title;
+                                        series = db[songId]["series"];
+                                    }
+                                    outTitle = Common.nameReplace(outTitle);
+                                    string targetPath = Path.Combine(directory, series, outTitle);
+                                    Common.SafeCreateDirectory(targetPath);
 
                                     int count = bank.SoundCount;
 
@@ -95,7 +182,7 @@ namespace ConvertHelper
                                         else
                                             outFileName = bank.Sounds[i].Name;
 
-                                        string outFile = Path.Combine( outPath, outFileName + ".wav" );
+                                        string outFile = Path.Combine(targetPath, outFileName + ".wav" );
                                         Console.WriteLine( "Writing " + outFile );
                                         bank.Sounds[i].WriteFile( outFile, 1.0f );
                                     }
@@ -106,13 +193,13 @@ namespace ConvertHelper
                             break;
                         case @".SSQ":
                             {
-                                string iTitle = "";
-                                string iArtist = "";
-                                string iTitleTranslit = "";
-                                string iArtistTranslit = "";
-                                string iCDTitle = "";
-                                int iMovieFlag = 0;
-                                int iMovieOffset = 0;
+                                string title = "";
+                                string artist = "";
+                                string titleTranslit = "";
+                                string artistTranslit = "";
+                                int movieFlag = 0;
+                                int movieOffset = 0;
+                                string series = "";
 
                                 using ( FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.ReadWrite) )
                                 {
@@ -121,75 +208,29 @@ namespace ConvertHelper
 
                                     string songId = Path.GetFileNameWithoutExtension(@filename);
 
-                                    if ( iSelect == "y" )
+                                    if (db[songId]["TITLE"] != "")
                                     {
-                                        Console.WriteLine();
-                                        Console.Write("TITLE: ");
-                                        iTitle = Console.ReadLine();
-
-                                        Console.Write("ARTIST: ");
-                                        iArtist = Console.ReadLine();
-
-                                        Console.Write("TITLETRANSLIT: ");
-                                        iTitleTranslit = Console.ReadLine();
-
-                                        Console.Write("ARTISTTRANSLIT: ");
-                                        iArtistTranslit = Console.ReadLine();
-
-                                        Console.Write("Origin (for CDTitle): ");
-                                        iCDTitle = Console.ReadLine();
-
-                                        Console.WriteLine();
-                                        Console.WriteLine("Input difficulty ratings for song " + iTitle + " below.");
-                                        Console.WriteLine();
-                                    } else if (db[songId]["TITLE"] != "")
-                                    {
-                                        iTitle = db[songId]["TITLE"];
-                                        iArtist = db[songId]["ARTIST"];
-                                        iMovieFlag = db[songId].GetValue("MOVIE");
-                                        iMovieOffset = db[songId].GetValue("MOVIEOFFSET");
-                                        //iTitleTranslit = db[songId]["TITLE"];
-                                        //iArtistTranslit = db[songId]["ARTIST"];
-                                        Console.WriteLine();
-                                        Console.WriteLine("Input difficulty ratings for song " + iTitle + " below.");
-                                        Console.WriteLine();
+                                        title = db[songId]["TITLE"];
+                                        artist = db[songId]["ARTIST"];
+                                        movieFlag = db[songId].GetValue("MOVIE");
+                                        movieOffset = db[songId].GetValue("MOVIEOFFSET");
+                                        series = db[songId]["series"];
                                     }
 
                                     sm.Tags["SongID"] = songId;
-                                    sm.Tags["TITLE"] = iTitle;
-                                    sm.Tags["ARTIST"] = iArtist;
-                                    if( iTitleTranslit != "" )
-                                        sm.Tags["TITLETRANSLIT"] = iTitleTranslit;
-                                    if( iArtistTranslit != "" )
-                                        sm.Tags["ARTISTTRANSLIT"] = iArtistTranslit;
+                                    sm.Tags["TITLE"] = title;
+                                    sm.Tags["ARTIST"] = artist;
+                                    if( titleTranslit != "" )
+                                        sm.Tags["TITLETRANSLIT"] = titleTranslit;
+                                    if( artistTranslit != "" )
+                                        sm.Tags["ARTISTTRANSLIT"] = artistTranslit;
 
-                                    if (iMovieFlag > 0)
-                                    {
-                                        sm.Tags["BGCHANGES"] = ((float)iMovieOffset / 1000) + "=" + songId + ".mpg=1.000=1=1=0";
-                                    }
-                                    /*
-                                    if( iTitleTranslit == "" )
-                                        sm.Tags["BANNER"] = iTitle + ".png";
-                                    else
-                                        sm.Tags["BANNER"] = iTitleTranslit + ".png";
+                                    if (movieFlag > 0) { }
+                                        sm.Tags["BGCHANGES"] = ((float)movieOffset / 1000) + "=" + songId + ".mpg=1.000=1=1=0";
 
-                                    if( iTitleTranslit == "" )
-                                        sm.Tags["BACKGROUND"] = iTitle + "-bg.png";
-                                    else
-                                        sm.Tags["BACKGROUND"] = iTitleTranslit + "-bg.png";
-
-                                    sm.Tags["CDTITLE"] = "./CDTitles/" + iCDTitle + ".png";
-
-                                    if( iTitleTranslit == "" )
-                                        sm.Tags["MUSIC"] = iTitle + ".ogg";
-                                    else
-                                        sm.Tags["MUSIC"] = iTitleTranslit + ".ogg";
-                                    */
+                                    sm.Tags["BANNER"] = songId + "_jk.png";
                                     sm.Tags["MUSIC"] = songId + ".wav";
                                     sm.Tags["PREVIEW"] = songId + "_s.wav";
-
-                                    //sm.Tags["SAMPLESTART"] = "20";
-                                    //sm.Tags["SAMPLELENGTH"] = "15";
 
                                     sm.CreateTempoTags( ssq.TempoEntries.ToArray() );
 
@@ -260,11 +301,7 @@ namespace ConvertHelper
                                                             case "": difText = "Difficult"; break;
                                                         }
 
-                                                        if( iSelect == "y" )
-                                                        {
-                                                            Console.Write(ToUpperFirstLetter(gameType.Replace("dance-", "")) + "-" + difText + ": ");
-                                                            meter = Console.ReadLine();
-                                                        } else if (db[songId]["TITLE"] != "")
+                                                        if (db[songId]["TITLE"] != "")
                                                         {
                                                             int player = 1;
                                                             switch (chart.Tags["Panels"])
@@ -275,10 +312,6 @@ namespace ConvertHelper
                                                                 default: player = 3; break;
                                                             }
                                                             meter = db[sm.Tags["SongID"]]["DIFFLV" + player + config["DDR"]["Difficulty" + chart.Tags["Difficulty"]]];
-                                                            /*
-                                                            Console.Write(ToUpperFirstLetter(gameType.Replace("dance-", "")) + "-" + difText + ": ");
-                                                            Console.WriteLine(db[sm.Tags["SongID"]]["DIFFLV" + player + config["DDR"]["Difficulty" + chart.Tags["Difficulty"]]]);
-                                                            */
                                                         }
 
                                                         if( meter == "" )
@@ -296,14 +329,30 @@ namespace ConvertHelper
                                         }
                                     }
 
-                                    string outTitle = iTitle;
+                                    string outTitle = title;
 
-                                    if( iTitleTranslit != "" )
-                                        outTitle = iTitleTranslit;
-                                    else if( iTitle == "" )
+                                    if( titleTranslit != "" )
+                                        outTitle = titleTranslit;
+                                    else if( title == "" )
                                         outTitle = Path.GetFileNameWithoutExtension(@filename);
 
-                                    sm.WriteFile( Path.Combine(Path.GetDirectoryName(filename), outTitle + ".sm") );
+                                    outTitle = Common.nameReplace(outTitle);
+                                    string targetPath = Path.Combine(directory, series, outTitle);
+                                    Common.SafeCreateDirectory(targetPath);
+
+                                    // Move the video if it exists
+                                    if (movieFlag > 0 && movieFolder != "")
+                                    {
+                                        string moviePath = Path.Combine(movieFolder, songId + ".m2v");
+                                        if (!File.Exists(moviePath))
+                                            moviePath = Path.Combine(movieFolder, songId + "_w.m2v");
+                                        FileInfo file = new FileInfo(moviePath);
+
+                                        string copyPath = Path.Combine(targetPath, songId + ".mpg");
+                                        file.CopyTo(copyPath);
+                                    }
+
+                                    sm.WriteFile( Path.Combine(targetPath, outTitle + ".sm") );
                                 }
                             }
                             break;

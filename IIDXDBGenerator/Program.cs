@@ -36,6 +36,8 @@ namespace IIDXDBGenerator
 
                 if (musicDataVersion > 21)
                     reader.ReadBytes(32);
+                if (musicDataVersion > 25)
+                    reader.ReadBytes(4);
 
                 using (MemoryStream metaMem = new MemoryStream(metaRaw))
                 {

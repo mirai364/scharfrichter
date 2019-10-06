@@ -156,20 +156,17 @@ namespace Scharfrichter.Codec
             return result;
         }
 
-        public Int64 ReadValueS(int bytes)
+        public string ReadValueStringS(int bytes)
         {
             byte[] buffer = ReadBytesS(bytes);
-            Int64 result = 0;
+            List<string> result = new List<string>();
 
             while (bytes > 0)
             {
                 bytes--;
-                result <<= 8;
-                result |= buffer[bytes];
+                result.Add(Convert.ToString(buffer[bytes], 2).PadLeft(8, '0'));
             }
-
-            bitsLeft = 0;
-            return result;
+            return string.Join("", result);
         }
 
         public UInt16 ReadUInt16S()

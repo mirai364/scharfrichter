@@ -486,21 +486,23 @@ namespace Scharfrichter.Codec.Archives
             return encodeType;
         }
 
-        public static string getKonamiString(Int64 bits, int padding, int length)
+        public static string getKonamiString(string bits, int padding, int length)
         {
             char[] charmap = PropBinaryNameChars.ToCharArray();
-            bits >>= padding;
+            if (padding > 0)
+                bits = bits.Remove(bits.Length - padding);
             List<char> charList = new List<char>();
             for (int k = 0; k < length; k++)
             {
-                var r = bits & 0b111111;
-                bits >>= 6;
+                string tmpt = bits.Substring(bits.Length - (k + 1) * 6, 6);
+                int r = Convert.ToInt32(tmpt, 2);
                 charList.Add(charmap[r]);
             }
             charList.Reverse();
             string result = new String(charList.ToArray());
             result = result.Replace("_E", ".");
             result = result.Replace("__", "_");
+            result = result.TrimStart('_');
             //result = result.Remove(0, 1);
             return result;
         }
@@ -586,7 +588,7 @@ namespace Scharfrichter.Codec.Archives
                         int length_bytes = (length_bits + 7) / 8;
                         var padding = 8 - (length_bits % 8);
                         if (padding == 8) { padding = 0; }
-                        name = getKonamiString(sr.ReadValueS(length_bytes), padding, length);
+                        name = getKonamiString(sr.ReadValueStringS(length_bytes), padding, length);
                     }
                     else
                     {

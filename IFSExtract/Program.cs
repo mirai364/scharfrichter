@@ -16,9 +16,7 @@ namespace IFSExtract
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("DJSLACKERS - IFSExtract");
             args = Subfolder.Parse(args);
-
             if (args.Length == 0)
             {
                 Console.WriteLine();

@@ -25,6 +25,7 @@ namespace Scharfrichter.Codec.Archives
                 result.TimeStamp = reader.ReadInt32S();
                 result.Offset = reader.ReadInt32S();
                 result.Length = reader.ReadInt32S();
+                // Console.WriteLine("TimeStamp: " + getTimeStamp(result.TimeStamp) + " Offset: " + result.Offset + " Length: " + result.Length);
                 return result;
             }
         }
@@ -500,7 +501,7 @@ namespace Scharfrichter.Codec.Archives
             string result = new String(charList.ToArray());
             result = result.Replace("_E", ".");
             result = result.Replace("__", "_");
-            result = result.Remove(0, 1);
+            //result = result.Remove(0, 1);
             return result;
         }
 
@@ -565,6 +566,8 @@ namespace Scharfrichter.Codec.Archives
             MemoryStream strm = new MemoryStream(tmpdata);
             BinaryReaderEx sr = new BinaryReaderEx(strm);
             List<string> nameList = new List<string>();
+            string folderName = "";
+            byte beforeNodeType = 0;
             while (sr.BaseStream.Position < sr.BaseStream.Length)
             {
                 byte nodeType = sr.ReadByte();
@@ -592,9 +595,31 @@ namespace Scharfrichter.Codec.Archives
                     }
                     if (nodeType == 30)
                     {
-                        nameList.Add(name);
+                        nameList.Add(folderName + name);
+                    }
+                    else if (nodeType == 6)
+                    {
+                        folderName += name + "\\";
                     }
                 }
+                if (beforeNodeType == NODE_END && nodeType == NODE_END)
+                {
+                    var tmpList = new List<string>();
+                    tmpList.AddRange(folderName.Split('\\'));
+                    if(tmpList.Count() > 1)
+                    {
+                        if (tmpList.Count() > 2)
+                        {
+                            tmpList.RemoveAt(tmpList.Count() - 2);
+                            folderName = string.Join("\\", tmpList);
+                        }
+                        else
+                        {
+                            folderName = "";
+                        }
+                    }
+                }
+                // Console.WriteLine("nodeType(" + nodeType + ") : " + folderName + name);
                 bool isBreak = false;
                 switch (nodeType)
                 {
@@ -608,6 +633,7 @@ namespace Scharfrichter.Codec.Archives
                         isBreak = true;
                         break;
                 }
+                beforeNodeType = nodeType;
                 if (isBreak)
                     break;
                 if (nodeType == NODE_START)
@@ -618,12 +644,27 @@ namespace Scharfrichter.Codec.Archives
             List<Stat> statList = new List<Stat>();
             for (var i = 0; i < num; i++)
             {
+                var pos = reader.BaseStream.Position;
                 MemoryStream temp = new MemoryStream(reader.ReadBytes(4 * 3));
+                // Console.Write(pos + " ");
                 Stat stat = Stat.Read(temp);
+                // TODO Change to use nodeType
+                if (stat.Length > reader.BaseStream.Length || stat.Offset > reader.BaseStream.Length)
+                {
+                    reader.BaseStream.Position = pos + 4;
+                    i -= 1;
+                    continue;
+                }
                 if (stat.Length == 0)
                 {
                     continue;
                 }
+                // error check
+                if(i >= nameList.Count() || i < 0)
+                {
+                    continue;
+                }
+
                 stat.FileName = nameList[i];
                 statList.Add(stat);
             }

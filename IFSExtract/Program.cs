@@ -19,19 +19,6 @@ namespace IFSExtract
             Console.WriteLine("DJSLACKERS - IFSExtract");
             args = Subfolder.Parse(args);
 
-            if (System.Diagnostics.Debugger.IsAttached && args.Length == 0)
-            {
-                Console.WriteLine();
-                Console.WriteLine("Debugger attached. Input file name:");
-                args = new string[] { Console.ReadLine() };
-                if (args[0] == "")
-                {
-                    args[0] = @"D:\BMS\beatmania IIDX 25 CANNON BALLERS (arcade)\data\10006.ifs";
-                    Console.WriteLine(args[0]);
-                    //args[0] = @"d:\bms\sound\[ifs]\01000.ifs";
-                }
-            }
-
             if (args.Length == 0)
             {
                 Console.WriteLine();
@@ -72,6 +59,7 @@ namespace IFSExtract
                                 DateTime timeStamp = archive.TimeStamps[j];
 
                                 string outputFile = Path.Combine(outputPath, name);
+                                Directory.CreateDirectory(Path.GetDirectoryName(outputFile));
                                 File.WriteAllBytes(outputFile, data);
                                 File.SetCreationTime(outputFile, timeStamp);
                                 File.SetLastAccessTimeUtc(outputFile, timeStamp);

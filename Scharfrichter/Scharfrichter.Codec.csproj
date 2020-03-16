@@ -49,6 +49,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Archives\%40Archive.cs" />
+    <Compile Include="Archives\Popn.cs" />
     <Compile Include="Archives\Bemani1.cs" />
     <Compile Include="Archives\BemaniS3P.cs" />
     <Compile Include="Archives\Bemani2DX.cs" />
@@ -65,6 +66,7 @@
     <Compile Include="Archives\Twinkle.cs" />
     <Compile Include="Archives\Zip.cs" />
     <Compile Include="Charts\Beatmania7Key.cs" />
+    <Compile Include="Charts\PopnPC.cs" />
     <Compile Include="Charts\BeatmaniaIII.cs" />
     <Compile Include="Encryption\BemaniPCEout.cs" />
     <Compile Include="Sounds\BemaniS3PSound.cs" />

@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.28010.2046
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.28803.352
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Scharfrichter.Codec", "Scharfrichter\Scharfrichter.Codec.csproj", "{DB34F6AF-C522-4149-A6D3-37A36D2D9590}"
 EndProject
@@ -44,6 +44,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FirebeatIIIExtract", "FirebeatIIIExtract\FirebeatIIIExtract.csproj", "{7D18FE75-B914-4E0B-AA65-CB0287E47DDA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S3PConverter", "S3PConverter\S3PConverter.csproj", "{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PopnToBMSUsaneko", "PopnToBMSUsaneko\PopnToBMSUsaneko.csproj", "{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PopnToBMS", "PopnToBMS\PopnToBMS.csproj", "{10C48884-1921-4CC7-A585-CBA986375412}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -265,6 +269,26 @@ Global
 		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Release|Mixed Platforms.Build.0 = Release|x86
 		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Release|x86.ActiveCfg = Release|x86
 		{EDE88022-1CDE-4FCF-9662-3D75C6C9D413}.Release|x86.Build.0 = Release|x86
+		{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}.Debug|Any CPU.ActiveCfg = Debug|x86
+		{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}.Debug|Mixed Platforms.ActiveCfg = Debug|x86
+		{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}.Debug|Mixed Platforms.Build.0 = Debug|x86
+		{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}.Debug|x86.ActiveCfg = Debug|x86
+		{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}.Debug|x86.Build.0 = Debug|x86
+		{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}.Release|Any CPU.ActiveCfg = Release|x86
+		{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}.Release|Mixed Platforms.ActiveCfg = Release|x86
+		{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}.Release|Mixed Platforms.Build.0 = Release|x86
+		{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}.Release|x86.ActiveCfg = Release|x86
+		{9CF35FB2-89E7-42A4-9AFE-60E83AAD3691}.Release|x86.Build.0 = Release|x86
+		{10C48884-1921-4CC7-A585-CBA986375412}.Debug|Any CPU.ActiveCfg = Debug|x86
+		{10C48884-1921-4CC7-A585-CBA986375412}.Debug|Mixed Platforms.ActiveCfg = Debug|x86
+		{10C48884-1921-4CC7-A585-CBA986375412}.Debug|Mixed Platforms.Build.0 = Debug|x86
+		{10C48884-1921-4CC7-A585-CBA986375412}.Debug|x86.ActiveCfg = Debug|x86
+		{10C48884-1921-4CC7-A585-CBA986375412}.Debug|x86.Build.0 = Debug|x86
+		{10C48884-1921-4CC7-A585-CBA986375412}.Release|Any CPU.ActiveCfg = Release|x86
+		{10C48884-1921-4CC7-A585-CBA986375412}.Release|Mixed Platforms.ActiveCfg = Release|x86
+		{10C48884-1921-4CC7-A585-CBA986375412}.Release|Mixed Platforms.Build.0 = Release|x86
+		{10C48884-1921-4CC7-A585-CBA986375412}.Release|x86.ActiveCfg = Release|x86
+		{10C48884-1921-4CC7-A585-CBA986375412}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

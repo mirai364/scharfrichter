@@ -10,9 +10,8 @@ namespace Scharfrichter.Common
     public partial class Common
     {
         public const string configFileName = "Convert";
-        public const string databaseFileName = "BeatmaniaDB";
 
-        static public Configuration LoadDB()
+        static public Configuration LoadDB(string databaseFileName = "BeatmaniaDB")
         {
             Configuration config = Configuration.ReadFile(databaseFileName);
             return config;

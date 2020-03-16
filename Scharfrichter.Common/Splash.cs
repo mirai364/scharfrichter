@@ -12,7 +12,7 @@ namespace Scharfrichter.Common
     {
         static public void Show(string applicationName)
         {
-            Console.WriteLine(@"DJSLACKERS - " + applicationName);
+            Console.WriteLine(applicationName);
             Console.WriteLine(@"Using modified NAudio - http://naudio.codeplex.com/");
         }
     }

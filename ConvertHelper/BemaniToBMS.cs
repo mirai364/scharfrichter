@@ -238,6 +238,7 @@ namespace ConvertHelper
             string movieFolder = config["BMS"]["MovieFolder"];
             string outputFolder = config["BMS"]["Output"] + version + "\\";
             bool isSameFolderMovie = config["BMS"].GetBool("IsSameFolderMovie");
+            int outputRank = config["BMS"].GetValue("OutputRank");
 
             if (quantizeMeasure > 0)
                 chart.QuantizeMeasureLengths(quantizeMeasure);
@@ -267,7 +268,9 @@ namespace ConvertHelper
                     bms.Charts[0].Tags["PLAYER"] = "3";
                 else
                     bms.Charts[0].Tags["PLAYER"] = "1";
-     
+
+                // create RANK metadata
+                bms.Charts[0].Tags["RANK"] = outputRank.ToString();
 
                 // replace prohibited characters
                 name = Common.nameReplace(name);

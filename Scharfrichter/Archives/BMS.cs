@@ -391,9 +391,6 @@ namespace Scharfrichter.Codec.Archives
             headerWriter.WriteLine("* ----------------------HEADER FIELD");
             headerWriter.WriteLine("");
 
-            // create RANK metadata
-            chart.Tags["RANK"] = "3"; // EASY
-
             // create BPM metadata
             chart.Tags["BPM"] = Math.Round((double)(chart.DefaultBPM), 3).ToString();
             // write all metadata

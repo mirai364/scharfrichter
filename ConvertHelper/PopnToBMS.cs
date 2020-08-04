@@ -224,6 +224,7 @@ namespace ConvertHelper
                 title = "BATTLE (3 BUTTON)";
             }
             title = title.Trim();
+            int outputRank = config["POPN"].GetValue("OutputRank");
 
             if (quantizeMeasure > 0)
                 chart.QuantizeMeasureLengths(quantizeMeasure);
@@ -253,7 +254,9 @@ namespace ConvertHelper
                     bms.Charts[0].Tags["PLAYER"] = "3";
                 else
                     bms.Charts[0].Tags["PLAYER"] = "1";
-     
+
+                // create RANK metadata
+                bms.Charts[0].Tags["RANK"] = outputRank.ToString();
 
                 // replace prohibited characters
                 name = Common.nameReplace(name);

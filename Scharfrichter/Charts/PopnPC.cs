@@ -74,7 +74,7 @@ namespace Scharfrichter.Codec.Charts
                         break;
                     case 0x0445:
                         entry.Type = EntryType.Tempo;
-                        entry.Value = new Fraction(eventValue, 1);
+                        entry.Value = new Fraction(eventValue + overflow * 256, 1);
                         break;
                     case 0x0745:
                         entry.Type = EntryType.Marker;

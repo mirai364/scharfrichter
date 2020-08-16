@@ -236,7 +236,6 @@ namespace ConvertHelper
             string title = config["BMS"]["Players" + config["IIDX"]["Players" + index.ToString()]] + " " + config["BMS"]["Difficulty" + difficulty.ToString()];
             title = title.Trim();
             string movieFolder = config["BMS"]["MovieFolder"];
-            string outputFolder = config["BMS"]["Output"] + version + "\\";
             bool isSameFolderMovie = config["BMS"].GetBool("IsSameFolderMovie");
             int outputRank = config["BMS"].GetValue("OutputRank");
 
@@ -275,7 +274,7 @@ namespace ConvertHelper
                 // replace prohibited characters
                 name = Common.nameReplace(name);
 
-                string dirPath = outputFolder + name;
+                string dirPath = Path.Combine(config["BMS"]["Output"], version, name);
 
                 if (title != null && title.Length > 0)
                 {

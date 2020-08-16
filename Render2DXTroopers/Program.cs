@@ -15,7 +15,7 @@ namespace Render2DXTroopers
                 Console.WriteLine();
                 Console.WriteLine("Debugger attached. Input file name:");
                 string baseName = Console.ReadLine();
-                args = new string[] { baseName + ".1", baseName + ".2dx" };
+                args = new string[] { baseName + ".1", baseName + ".2dx", baseName + ".s3p" };
             }
 
             ConvertHelper.Render.RenderWAV(args, 1, 1000, false);

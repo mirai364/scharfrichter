@@ -34,10 +34,13 @@ namespace IIDXDBGenerator
             {
                 byte[] metaRaw = reader.ReadBytes(800);
 
-                if (musicDataVersion > 21)
-                    reader.ReadBytes(32);
-                if (musicDataVersion > 25)
-                    reader.ReadBytes(4);
+                if (musicDataVersion < 80)
+                {
+                    if (musicDataVersion > 21)
+                        reader.ReadBytes(32);
+                    if (musicDataVersion > 25)
+                        reader.ReadBytes(4);
+                }
 
                 using (MemoryStream metaMem = new MemoryStream(metaRaw))
                 {
@@ -412,9 +415,19 @@ namespace IIDXDBGenerator
                 }
                 int musicDataVersion = reader.ReadInt32();
 
-                int metaCount = reader.ReadInt16();
-                int entryCount = reader.ReadInt16();
-                reader.ReadInt32();
+                int metaCount;
+                int entryCount;
+                if (musicDataVersion >= 80)
+                {
+                    // beatmania IIDX INFINITAS
+                    metaCount = reader.ReadInt32();
+                    entryCount = reader.ReadInt32();
+                } else
+                {
+                    metaCount = reader.ReadInt16();
+                    entryCount = reader.ReadInt16();
+                    reader.ReadInt32();
+                }
                 
                 List<int> entries = new List<int>();
                 for (int i = 0; i < entryCount; i++)

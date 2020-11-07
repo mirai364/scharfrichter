@@ -184,6 +184,32 @@ namespace Scharfrichter.Codec.Sounds
                 dataStream = null;
             }
         }
+        public byte[] RenderNewFormat(float masterVolume, WaveFormat newFormat)
+        {
+            if (Data != null && Data.Length > 0)
+            {
+                using (MemoryStream mem = new MemoryStream())
+                {
+                    MemoryStream dataStream = new MemoryStream(Render(masterVolume));
+                    RawSourceWaveStream wavStream = new RawSourceWaveStream(dataStream, Format);
+
+                    byte[] buffer;
+                    int bytesRead;
+
+                    using (MediaFoundationResampler resampler = new MediaFoundationResampler(wavStream, newFormat))
+                    {
+                        double c1 = (double)resampler.WaveFormat.SampleRate / wavStream.WaveFormat.SampleRate;
+                        double c2 = (double)resampler.WaveFormat.BitsPerSample / wavStream.WaveFormat.BitsPerSample;
+                        double c3 = (double)resampler.WaveFormat.Channels / wavStream.WaveFormat.Channels;
+
+                        buffer = new byte[(int)(wavStream.Length * (c1 * c2 * c3))];
+                        resampler.Read(buffer, 0, buffer.Length);
+                    }
+                    return buffer;
+                }
+            }
+            return Data;
+        }
 
         public void Write(Stream target, float masterVolume)
         {

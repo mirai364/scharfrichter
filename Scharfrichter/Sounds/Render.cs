@@ -69,6 +69,7 @@ namespace Scharfrichter.Codec.Sounds
             Dictionary<int, byte[]> renderedSamples = new Dictionary<int, byte[]>();
 
             int[] buffer = new int[0];
+            WaveFormat newFormat = WaveFormat.CreateCustomFormat(WaveFormatEncoding.Pcm, 44100, 2, 44100 * 4, 4, 16);
 
             chart.Entries.Reverse();
 
@@ -92,7 +93,14 @@ namespace Scharfrichter.Codec.Sounds
                         }
                         else if (sound != null)
                         {
-                            soundData = sound.Render(1.0f);
+                            if (sound.Format.Equals(newFormat))
+                            {
+                                soundData = sound.Render(1.0f);
+                            }
+                            else
+                            {
+                                soundData = sound.RenderNewFormat(1.0f, newFormat);
+                            }
                             renderedSamples[soundIndex] = soundData;
                         }
 
@@ -135,7 +143,7 @@ namespace Scharfrichter.Codec.Sounds
 
             using (MemoryStream mem = new MemoryStream())
             {
-                using (WaveFileWriter writer = new WaveFileWriter(new IgnoreDisposeStream(mem), WaveFormat.CreateCustomFormat(WaveFormatEncoding.Pcm, 44100, 2, 44100 * 4, 4, 16)))
+                using (WaveFileWriter writer = new WaveFileWriter(new IgnoreDisposeStream(mem), newFormat))
                 {
                     writer.WriteSamples(outputSamples, 0, length);
                 }

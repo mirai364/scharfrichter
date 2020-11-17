@@ -40,6 +40,8 @@ namespace ConvertHelper
                 Console.WriteLine("2DX");
             }
 
+            string output = config["BMS"]["Output"];
+
             // process files
             for (int i = 0; i < args.Length; i++)
             {
@@ -63,7 +65,9 @@ namespace ConvertHelper
                     }
 
                     string title = Path.GetFileNameWithoutExtension(filename);
-                    string output = Path.GetDirectoryName(filename) + "\\";
+                    string input = Path.GetDirectoryName(filename) + "\\";
+                    if (output == "")
+                        output = input;
                     string suffix = "";
                     if (title.Length > 4)
                     {
@@ -80,9 +84,12 @@ namespace ConvertHelper
                             {
                                 Console.WriteLine("Converting Samples");
                                 Bemani2DX archive = Bemani2DX.Read(source);
+                                string titleTmp = title;
+                                if (db[title]["TITLE"] != "")
+                                    titleTmp = db[title]["TITLE"];
 
                                 float volume = 0.6f;
-                                ConvertSounds(archive.Sounds, filename, volume, null, output, title, true, "");
+                                ConvertSounds(archive.Sounds, filename, volume, null, output, titleTmp, true, "");
                             }
                         }
                         catch (Exception e)
@@ -105,7 +112,7 @@ namespace ConvertHelper
                                     break;
                                 case 1:
                                     // EASY
-                                    filename = output + title + "_ep.bin";
+                                    filename = input + title + "_ep.bin";
                                     if (!File.Exists(filename))
                                     {
                                         continue;
@@ -115,7 +122,7 @@ namespace ConvertHelper
                                     break;
                                 case 2:
                                     // NOERMAL
-                                    filename = output + title + "_np.bin";
+                                    filename = input + title + "_np.bin";
                                     if (!File.Exists(filename))
                                     {
                                         continue;
@@ -125,7 +132,7 @@ namespace ConvertHelper
                                     break;
                                 case 3:
                                     // HYPER
-                                    filename = output + title + "_hp.bin";
+                                    filename = input + title + "_hp.bin";
                                     if (!File.Exists(filename))
                                     {
                                         continue;
@@ -135,7 +142,7 @@ namespace ConvertHelper
                                     break;
                                 case 4:
                                     // EX
-                                    filename = output + title + "_op.bin";
+                                    filename = input + title + "_op.bin";
                                     if (!File.Exists(filename))
                                     {
                                         continue;
@@ -182,9 +189,12 @@ namespace ConvertHelper
                                         {
                                             Console.WriteLine("Converting Samples");
                                             Bemani2DX archive = Bemani2DX.Read(source);
+                                            string titleTmp = title;
+                                            if (db[title]["TITLE"] != "")
+                                                titleTmp = db[title]["TITLE"];
 
                                             float volume = 0.6f;
-                                            maxIndex = ConvertSounds(archive.Sounds, filename, volume, null, output, title, false, "");
+                                            maxIndex = ConvertSounds(archive.Sounds, filename, volume, null, output, titleTmp, false, "");
                                         }
                                         break;
                                 }
@@ -264,6 +274,7 @@ namespace ConvertHelper
 
                 // replace prohibited characters
                 name = Common.nameReplace(name);
+                dirPath = Path.Combine(dirPath, version, name);
 
                 if (title != null && title.Length > 0)
                 {
@@ -301,7 +312,16 @@ namespace ConvertHelper
 
         static public int ConvertSounds(Sound[] sounds, string filename, float volume, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "")
         {
-            string targetPath = Path.Combine(outputFolder, version);
+            string name;
+            if (nameInfo.Length == 0)
+            {
+                name = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
+            }
+            else
+            {
+                name = Common.nameReplace(nameInfo);
+            }
+            string targetPath = Path.Combine(outputFolder, version, name);
             Common.SafeCreateDirectory(targetPath);
 
             int maxIndex = -1;
@@ -328,7 +348,7 @@ namespace ConvertHelper
                         maxIndex = sampleIndex;
                         maxLength = sounds[j].Data.Length;
                     }
-                    sounds[j].WriteFile(Path.Combine(targetPath, Scharfrichter.Codec.Util.ConvertToBMEString(sampleIndex, 4) + @".wav"), volume);
+                    sounds[j].WriteFile(Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".wav"), volume);
                 }
             }
             return maxIndex;

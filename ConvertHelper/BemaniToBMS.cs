@@ -54,6 +54,8 @@ namespace ConvertHelper
                 Console.WriteLine("1, 2DX, S3P, CS, SD9, SSP");
             }
 
+            string output = config["BMS"]["Output"];
+
             // process files
             for (int i = 0; i < args.Length; i++)
             {
@@ -62,6 +64,8 @@ namespace ConvertHelper
                     Console.WriteLine();
                     Console.WriteLine("Processing File: " + args[i]);
                     string filename = args[i];
+                    if (output == "")
+                        output = Path.GetDirectoryName(filename) + "\\";
 
                     string IIDXDBName = Path.GetFileNameWithoutExtension(filename);
                     string version = IIDXDBName.Substring(0, 2);
@@ -135,7 +139,6 @@ namespace ConvertHelper
                                 Console.WriteLine("Converting Samples");
                                 Bemani2DX archive = Bemani2DX.Read(source);
 
-                                string output = config["BMS"]["Output"];
                                 float volume = 0.6f;
                                 string title = "";
                                 if (db[IIDXDBName]["TITLE"] != "")
@@ -152,7 +155,6 @@ namespace ConvertHelper
                                 Console.WriteLine("Converting Samples");
                                 BemaniS3P archive = BemaniS3P.Read(source);
 
-                                string output = config["BMS"]["Output"];
                                 float volume = 0.6f;
                                 string title = "";
                                 if (db[IIDXDBName]["TITLE"] != "")
@@ -362,7 +364,7 @@ namespace ConvertHelper
                 for (int j = 0; j < count; j++)
                 {
                     int sampleIndex = j + 1;
-                    sounds[j].WriteFile(Path.Combine(targetPath, Scharfrichter.Codec.Util.ConvertToBMEString(sampleIndex, 4) + @".wav"), volume);
+                    sounds[j].WriteFile(Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".wav"), volume);
                 }
             }
         }

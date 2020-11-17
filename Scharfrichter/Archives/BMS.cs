@@ -371,9 +371,14 @@ namespace Scharfrichter.Codec.Archives
         {
             int DelayPoint = 0;
             bool idUseRenderAutoTip = false;
+            string commonBellPath = "";
             Dictionary<int, Fraction> bpmMap = new Dictionary<int, Fraction>();
             BinaryWriter writer = new BinaryWriter(target, Encoding.GetEncoding(932));
             Chart chart = charts[0];
+            if (chart.Tags.ContainsKey("COMMONBELLPATH"))
+            {
+                commonBellPath = chart.Tags["COMMONBELLPATH"];
+            }
 
             MemoryStream header = new MemoryStream();
             MemoryStream expansion = new MemoryStream();
@@ -457,7 +462,7 @@ namespace Scharfrichter.Codec.Archives
             {
                 idUseRenderAutoTip = System.Convert.ToBoolean(chart.Tags["ISUSERENDERAUTOTIP"]);
             }
-                chart.ClearUsed();
+            chart.ClearUsed();
 
             // iterate through all events
             int currentMeasure = 0;
@@ -782,6 +787,12 @@ namespace Scharfrichter.Codec.Archives
                 {
                     if (tag.Key == "VIDEO" || tag.Key == "VIDEODELAY" || tag.Key == "KEYSET" || tag.Key == "ISUSERENDERAUTOTIP")
                         continue;
+                    if (commonBellPath != "" && tag.Value.Contains("0000.wav"))
+                    {
+                        headerWriter.WriteLine("#" + tag.Key + " " + commonBellPath);
+                        continue;
+                    }
+
                     headerWriter.WriteLine("#" + tag.Key + " " + tag.Value);
                 }
                 else

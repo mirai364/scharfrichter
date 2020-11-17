@@ -229,6 +229,10 @@ namespace ConvertHelper
             if (quantizeMeasure > 0)
                 chart.QuantizeMeasureLengths(quantizeMeasure);
 
+            bool enableCommonBell = config["POPN"].GetBool("EnableCommonBell");
+            if (enableCommonBell)
+                chart.Tags["COMMONBELLPATH"] = config["POPN"].GetString("CommonBellPath");
+
             using (MemoryStream mem = new MemoryStream())
             {
                 BMS bms = new BMS();

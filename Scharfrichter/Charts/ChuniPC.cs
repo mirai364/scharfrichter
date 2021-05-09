@@ -74,6 +74,7 @@ namespace Scharfrichter.Codec.Charts
                 {
                     case "BPM":
                         entry.Type = EntryTypeChuni.Tempo;
+                        entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Value = new Fraction((int)(double.Parse(parts[3])*1000), 1000);
                         chart.Entries.Add(entry);
                         break;

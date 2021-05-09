@@ -113,23 +113,12 @@ namespace Scharfrichter.Codec.Archives
             headerWriter.WriteLine("#REQUEST \"ticks_per_beat 480\"");
             headerWriter.WriteLine("");
             headerWriter.WriteLine("BPM");
-            headerWriter.WriteLine("#BPM01: " + chart.Tags["BPM"]);
-            headerWriter.WriteLine("#00008: 01");
-            headerWriter.WriteLine("");
-            headerWriter.WriteLine("Measure's pulse");
-            headerWriter.WriteLine("#00002: 4");
-
-            if (chart.Tags.ContainsKey("TIL00"))
-            {
-                headerWriter.WriteLine("");
-                headerWriter.WriteLine("#TIL00: " + "\"" + chart.Tags["TIL00"] + "\"");
-                headerWriter.WriteLine("#HISPEED 00");
-            }
 
             // iterate through all events
             int currentMeasure = 0;
             int currentOperation = 0;
             int measureCount = chart.Measures;
+            int bpmCount = 0;
             bool repeat = false;
             List<EntryChuni> measureEntries = new List<EntryChuni>();
             List<EntryChuni> entries = new List<EntryChuni>();
@@ -255,6 +244,7 @@ namespace Scharfrichter.Codec.Archives
                         case 78: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 13; laneString = "5D"; break;
                         case 79: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 14; laneString = "5E"; break;
                         case 80: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 15; laneString = "5F"; break;
+                        case 81: currentType = EntryTypeChuni.Tempo; currentPlayer = 0; currentColumn = 0; laneString = "08"; break;
                         default: currentOperation = 0; currentMeasure++; continue;
                     }
 
@@ -286,7 +276,7 @@ namespace Scharfrichter.Codec.Archives
                     {
                         List<EntryChuni> entriesTmp = new List<EntryChuni>();
                         string laneStringTmp = laneString;
-                        if (currentPlayer != 1 && currentPlayer != 5)
+                        if (currentPlayer != 1 && currentPlayer != 5 && currentPlayer != 0)
                             laneStringTmp += Util.ConvertToBMEString(loop, 1);
 
                         // separate events we'll use
@@ -361,6 +351,53 @@ namespace Scharfrichter.Codec.Archives
                                 }
                             }
                         }
+                        else if (currentType == EntryTypeChuni.Tempo)
+                        {
+                            foreach (var entry in entries)
+                            {
+                                long multiplier = common / entry.MetricOffset.Denominator;
+                                long offset = (entry.MetricOffset.Numerator * multiplier) / commonDivisor;
+                                //long offset = (entry.MetricOffset.Numerator * common) / entry.MetricOffset.Denominator;
+                                int count = values.Length;
+
+                                if (offset >= 0 && offset < count && !entry.Used)
+                                {
+                                    if (values[offset] == 0)
+                                    {
+                                        int entryIndex = -1;
+
+                                        foreach (KeyValuePair<int, Fraction> bpmEntry in bpmMap)
+                                        {
+                                            if (bpmEntry.Value == entry.Value)
+                                            {
+                                                entryIndex = bpmEntry.Key;
+                                                break;
+                                            }
+                                        }
+
+                                        if (entryIndex <= 0)
+                                        {
+                                            bpmCount++;
+
+                                            // this is a hack to make the numbers decimal
+                                            if (bpmCount % 36 == 10)
+                                                bpmCount += 26;
+
+                                            headerWriter.WriteLine("#BPM" + Util.ConvertToBMEString(bpmCount, 2) + " " + (Math.Round((double)(entry.Value), 3)).ToString());
+                                            entryIndex = bpmCount;
+                                            bpmMap[entryIndex] = entry.Value;
+                                        }
+                                        values[offset] = entryIndex;
+                                        entry.Used = true;
+                                        write = true;
+                                    }
+                                    else
+                                    {
+                                        repeat = true;
+                                    }
+                                }
+                            }
+                        }
                         else
                         {
                             foreach (var entry in entriesTmp)
@@ -400,6 +437,8 @@ namespace Scharfrichter.Codec.Archives
 
                             switch (currentPlayer)
                             {
+                                case 0:
+                                    headerWriter.WriteLine(builder.ToString()); break;
                                 case 1:
                                     shortNoteWriter.WriteLine(builder.ToString()); break;
                                 case 2:
@@ -419,7 +458,18 @@ namespace Scharfrichter.Codec.Archives
                 if (!repeat)
                     currentOperation++;
             }
-            
+
+            headerWriter.WriteLine("");
+            headerWriter.WriteLine("Measure's pulse");
+            headerWriter.WriteLine("#00002: 4");
+
+            if (chart.Tags.ContainsKey("TIL00"))
+            {
+                headerWriter.WriteLine("");
+                headerWriter.WriteLine("#TIL00: " + "\"" + chart.Tags["TIL00"] + "\"");
+                headerWriter.WriteLine("#HISPEED 00");
+            }
+
             // finalize data and dump to stream
             headerWriter.Flush();
             shortNoteWriter.Flush();

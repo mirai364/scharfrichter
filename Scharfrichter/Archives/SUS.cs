@@ -224,20 +224,25 @@ namespace Scharfrichter.Codec.Archives
             headerWriter.WriteLine("");
             headerWriter.WriteLine("Request");
             headerWriter.WriteLine("#REQUEST \"mertonome enabled\"");
-            headerWriter.WriteLine("#REQUEST \"segments_per_second 20\"");
 
             // create BPM metadata
             chart.Tags["BPM"] = Math.Round((double)(chart.DefaultBPM), 3).ToString();
 
             headerWriter.WriteLine("");
             headerWriter.WriteLine("BPM");
-            headerWriter.WriteLine("#BPM02: " + chart.Tags["BPM"]);
-            headerWriter.WriteLine("#00008: 02");
+            headerWriter.WriteLine("#BPM01: " + chart.Tags["BPM"]);
+            headerWriter.WriteLine("#00008: 01");
 
             headerWriter.WriteLine("");
             headerWriter.WriteLine("Measure's pulse");
             headerWriter.WriteLine("#00002: 4");
-            headerWriter.WriteLine("");
+
+            if (chart.Tags.ContainsKey("TIL00"))
+            {
+                headerWriter.WriteLine("");
+                headerWriter.WriteLine("#TIL00: " + "\"" + chart.Tags["TIL00"] + "\"");
+                headerWriter.WriteLine("#HISPEED 00");
+            }
 
             // iterate through all events
             int currentMeasure = 0;

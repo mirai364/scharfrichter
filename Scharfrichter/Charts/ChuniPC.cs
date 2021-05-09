@@ -59,7 +59,9 @@ namespace Scharfrichter.Codec.Charts
                 if (parts.Count() > 4)
                 {
                     notesPosition = int.Parse(parts[3]);
-                    notesWidth = int.Parse(parts[4]);
+                    int tmp;
+                    if (int.TryParse(parts[4], out tmp) == true)
+                        notesWidth = tmp;
                 }
 
 
@@ -433,6 +435,35 @@ namespace Scharfrichter.Codec.Charts
                             var list = new List<int> { chart.Entries.Count() - 1 };
                             slideDic[tmp] = list;
                         }
+                        break;
+                    case "SFL":
+                        string TIL00 = "";
+                        if (chart.Tags.ContainsKey("TIL00"))
+                        {
+                            TIL00 = chart.Tags["TIL00"] + ", ";
+                        }
+
+                        if (measurePosition == 0)
+                        {
+                            chart.Tags["TIL00"] = TIL00 + currentMeasure + "'0:" + double.Parse(parts[4]) + ", ";
+                        } else
+                        {
+                            int calc = (int)(1920.0 * ((double)measurePosition / (double)resolution));
+                            chart.Tags["TIL00"] = TIL00 + currentMeasure + "'" + calc.ToString() + ":" +double.Parse(parts[4]) + ", ";
+                        }
+
+                        int nextMeasure = (int)Math.Floor(((double)currentMeasure * (double)resolution + (double)measurePosition + (double)notesPosition) / (double)resolution);
+                        int culcPosition = currentMeasure * resolution + measurePosition + notesPosition - nextMeasure * resolution;
+                        if (culcPosition == 0)
+                        {
+                            chart.Tags["TIL00"] += nextMeasure + "'0:1.0";
+                        }
+                        else
+                        {
+                            int calc = (int)(1920.0 * ((double)culcPosition / (double)resolution));
+                            chart.Tags["TIL00"] += nextMeasure + "'" + calc.ToString() + ":1.0";
+                        }
+                        chart.Tags["HISPEED"] = "00";
                         break;
                 }
             }

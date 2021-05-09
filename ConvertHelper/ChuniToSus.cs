@@ -95,7 +95,31 @@ namespace ConvertHelper
                             Dictionary<string, MusicData> musicData = new Dictionary<string, MusicData>();
                             foreach (XElement boxedLunchElement in boxedLunchRow)
                             {
-                                musicData.Add(boxedLunchElement.Element("file").Element("path").Value, new MusicData() { type = boxedLunchElement.Element("type").Element("id").Value, typeName = boxedLunchElement.Element("type").Element("data").Value, level = boxedLunchElement.Element("level").Value });
+                                if (boxedLunchElement.Element("file").Element("path").Value != "")
+                                {
+                                    if (boxedLunchElement.Element("type").Element("id").Value == "4")
+                                    {
+                                        musicData.Add(
+                                            boxedLunchElement.Element("file").Element("path").Value,
+                                            new MusicData()
+                                            {
+                                                type = boxedLunchElement.Element("type").Element("id").Value + ":" + musicXml.Element("worldsEndTagName").Element("str").Value,
+                                                typeName = boxedLunchElement.Element("type").Element("data").Value,
+                                                level = musicXml.Element("starDifType").Value
+                                            }
+                                        );
+                                    } else
+                                    {
+                                        musicData.Add(
+                                            boxedLunchElement.Element("file").Element("path").Value,
+                                            new MusicData() {
+                                                type = boxedLunchElement.Element("type").Element("id").Value,
+                                                typeName = boxedLunchElement.Element("type").Element("data").Value,
+                                                level = boxedLunchElement.Element("level").Value
+                                            }
+                                        );
+                                    }
+                                }
                             }
 
                             System.IO.StreamReader file = new System.IO.StreamReader(args[i]);
@@ -163,11 +187,17 @@ namespace ConvertHelper
                 // create RANK metadata
                 sus.chart.Tags["RANK"] = outputRank.ToString();
 
+                string dirPath = Path.Combine(config["BMS"]["Output"], name);
+                if (chart.Tags["TYPENAME"] == "WORLD'S END")
+                {
+                    name += "(" + sus.chart.Tags["TYPENAME"] + " " + chart.Tags["TYPE"].Substring(2) + chart.Tags["PLAYLEVEL"] + ")";
+                } else
+                {
+                    name += "(" + sus.chart.Tags["TYPENAME"] + ")";
+                }
+
                 // replace prohibited characters
                 name = Common.nameReplace(name);
-
-                string dirPath = Path.Combine(config["BMS"]["Output"], name);
-                name += "(" + sus.chart.Tags["TYPENAME"] + ")";
 
                 Common.SafeCreateDirectory(dirPath);
                 string output = Path.Combine(dirPath, name + ".sus");
@@ -188,8 +218,7 @@ namespace ConvertHelper
                 if (!isSucces)
                     return false;
 
-                //File.WriteAllBytes(output, mem.ToArray());
-                File.WriteAllText(output, Encoding.UTF8.GetString(mem.ToArray()), Encoding.GetEncoding(932));
+                File.WriteAllBytes(output, mem.ToArray());
             }
             return true;
         }

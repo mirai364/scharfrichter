@@ -3,75 +3,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
 
 namespace Scharfrichter.Codec.Archives
 {
-    // Be-Music Source File.
-
     public class SUS : Archive
     {
-        private enum ValueCoding
-        {
-            BME,
-            Hex,
-            Decimal,
-            BPMTable
-        }
-
         public ChartChuni chart;
-        private int[] sampleMap;
-        private Dictionary<int, int> reSampleMap = new Dictionary<int, int>();
 
-        public SUS()
-        {
-            ResetSampleMap();
-        }
-
-        public void GenerateSampleMap()
-        {
-            int[] usedSamples = chart.UsedSamples();
-            SampleMap = usedSamples;
-        }
-
-        public bool GenerateReSampleTags(string keyset = "0", string rendarWavName = "")
-        {
-            string targetFolder;
-            if (keyset == "0")
-            {
-                targetFolder = "sounds\\";
-            }
-            else
-            {
-                targetFolder = "sounds_" + keyset + "\\";
-            }
-
-            foreach (KeyValuePair<int, int> pair in reSampleMap)
-            {
-                if (pair.Value > 1293)
-                {
-                    Console.WriteLine("WARNING: More than 1293 samples");
-                    return false;
-                }
-                chart.Tags["WAV" + Util.ConvertToBMEString(pair.Value + 1, 2)] = targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".wav";
-                //Console.WriteLine("WAV" + Util.ConvertToBMEString(pair.Value + 1, 2) + " " + targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".wav");
-            }
-
-            if (rendarWavName.Length > 0)
-            {
-                chart.Tags["WAV01"] = targetFolder + rendarWavName + ".wav";
-            }
-            return true;
-        }
-
-        static public SUS Read(Stream source)
-        {
-            List<KeyValuePair<string, string>> noteTags = new List<KeyValuePair<string, string>>();
-
-            SUS result = new SUS();
-            return result;
-        }
+        public SUS() { }
 
         private static int[] Reduce(int[] source)
         {
@@ -130,51 +70,6 @@ namespace Scharfrichter.Codec.Archives
             return result;
         }
 
-        public void ResetSampleMap()
-        {
-            sampleMap = new int[1295];
-            for (int i = 0; i < 1295; i++)
-            {
-                sampleMap[i] = i;
-            }
-        }
-
-        public int[] SampleMap
-        {
-            get
-            {
-                return sampleMap;
-            }
-            set
-            {
-                int usedSampleCount = value.Length;
-
-                if (usedSampleCount > 1293)
-                    usedSampleCount = 1293;
-
-                Array.Copy(value, 0, sampleMap, 1, usedSampleCount);
-                for (int i = usedSampleCount + 1; i < 1294; i++)
-                {
-                    sampleMap[i] = 0;
-                }
-            }
-        }
-
-        private int getCommonDivisor(int value, int quantizeNotes)
-        {
-            if (value == 0) return quantizeNotes;
-            int a = value;
-            int b = quantizeNotes;
-            int c;
-            while (true)
-            {
-                c = b % a; if (c == 0) break;
-                b = a;
-                a = c;
-            }
-            return a;
-        }
-
         public bool Write(Stream target, bool enableBackspinScratch)
         {
             int DelayPoint = 0;
@@ -188,28 +83,19 @@ namespace Scharfrichter.Codec.Archives
             MemoryStream air = new MemoryStream();
 
             StreamWriter headerWriter = new StreamWriter(header);
-            StreamWriter shortNoteWriter = new StreamWriter(shortNote);
-            shortNoteWriter.WriteLine("");
-            shortNoteWriter.WriteLine("ShortNote");
-            StreamWriter holdWriter = new StreamWriter(hold);
-            holdWriter.WriteLine("");
-            holdWriter.WriteLine("Hold");
-            StreamWriter slideWriter = new StreamWriter(slide);
-            slideWriter.WriteLine("");
-            slideWriter.WriteLine("Slide");
-            StreamWriter airHoldWriter = new StreamWriter(airHold);
-            airHoldWriter.WriteLine("");
-            airHoldWriter.WriteLine("AirHold");
-            StreamWriter airWriter = new StreamWriter(air);
-            airWriter.WriteLine("");
-            airWriter.WriteLine("Air");
+            StreamWriter shortNoteWriter = new StreamWriter(shortNote); shortNoteWriter.WriteLine("");  shortNoteWriter.WriteLine("ShortNote");
+            StreamWriter holdWriter = new StreamWriter(hold);           holdWriter.WriteLine("");       holdWriter.WriteLine("Hold");
+            StreamWriter slideWriter = new StreamWriter(slide);         slideWriter.WriteLine("");      slideWriter.WriteLine("Slide");
+            StreamWriter airHoldWriter = new StreamWriter(airHold);     airHoldWriter.WriteLine("");    airHoldWriter.WriteLine("AirHold");
+            StreamWriter airWriter = new StreamWriter(air);             airWriter.WriteLine("");        airWriter.WriteLine("Air");
 
+            // create BPM metadata
+            chart.Tags["BPM"] = Math.Round((double)(chart.DefaultBPM), 3).ToString();
             // note count header. this can assist people tagging.
             string WAVE = "music.wav";
             string WAVEOFFSET = "0";
             string JACKET = "jacket.jpg";
 
-            headerWriter.WriteLine("");
             headerWriter.WriteLine("Music info");
             headerWriter.WriteLine("#TITLE \"" + chart.Tags["TITLE"] + "\"");
             headerWriter.WriteLine("#ARTIST \"" + chart.Tags["ARTIST"] + "\"");
@@ -220,19 +106,15 @@ namespace Scharfrichter.Codec.Archives
             headerWriter.WriteLine("#WAVE \"" + WAVE + "\"");
             headerWriter.WriteLine("#WAVEOFFSET " + WAVEOFFSET);
             headerWriter.WriteLine("#JACKET \"" + JACKET + "\"");
-
+            headerWriter.WriteLine("#BASEBPM " + chart.Tags["BPM"]);
             headerWriter.WriteLine("");
             headerWriter.WriteLine("Request");
             headerWriter.WriteLine("#REQUEST \"mertonome enabled\"");
-
-            // create BPM metadata
-            chart.Tags["BPM"] = Math.Round((double)(chart.DefaultBPM), 3).ToString();
-
+            headerWriter.WriteLine("#REQUEST \"ticks_per_beat 480\"");
             headerWriter.WriteLine("");
             headerWriter.WriteLine("BPM");
             headerWriter.WriteLine("#BPM01: " + chart.Tags["BPM"]);
             headerWriter.WriteLine("#00008: 01");
-
             headerWriter.WriteLine("");
             headerWriter.WriteLine("Measure's pulse");
             headerWriter.WriteLine("#00002: 4");
@@ -288,100 +170,91 @@ namespace Scharfrichter.Codec.Archives
                             }
 
                             break;
-                        case 01: currentOperation++; continue;
-                        case 02: currentOperation++; continue;
-                        case 03: currentOperation++; continue;
-                        case 04: currentOperation++; continue;
-                        case 05: currentOperation++; continue;
-                        case 06: currentOperation++; continue;
-                        case 07: currentOperation++; continue;
-                        case 08: currentOperation++; continue;
-                        case 09: currentOperation++; continue;
-                        case 10: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 0; laneString = "10"; break;
-                        case 11: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 1; laneString = "11"; break;
-                        case 12: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 2; laneString = "12"; break;
-                        case 13: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 3; laneString = "13"; break;
-                        case 14: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 4; laneString = "14"; break;
-                        case 15: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 5; laneString = "15"; break;
-                        case 16: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 6; laneString = "16"; break;
-                        case 17: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 7; laneString = "17"; break;
-                        case 18: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 8; laneString = "18"; break;
-                        case 19: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 9; laneString = "19"; break;
-                        case 20: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 10; laneString = "1a"; break;
-                        case 21: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 11; laneString = "1b"; break;
-                        case 22: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 12; laneString = "1c"; break;
-                        case 23: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 13; laneString = "1d"; break;
-                        case 24: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 14; laneString = "1e"; break;
-                        case 25: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 15; laneString = "1f"; break;
-                        case 26: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 16; laneString = "1g"; break;
-                        case 27: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 0; laneString = "50"; break;
-                        case 28: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 1; laneString = "51"; break;
-                        case 29: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 2; laneString = "52"; break;
-                        case 30: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 3; laneString = "53"; break;
-                        case 31: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 4; laneString = "54"; break;
-                        case 32: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 5; laneString = "55"; break;
-                        case 33: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 6; laneString = "56"; break;
-                        case 34: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 7; laneString = "57"; break;
-                        case 35: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 8; laneString = "58"; break;
-                        case 36: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 9; laneString = "59"; break;
-                        case 37: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 10; laneString = "5a"; break;
-                        case 38: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 11; laneString = "5b"; break;
-                        case 39: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 12; laneString = "5c"; break;
-                        case 40: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 13; laneString = "5d"; break;
-                        case 41: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 14; laneString = "5f"; break;
-                        case 42: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 15; laneString = "5f"; break;
-                        case 43: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 16; laneString = "5g"; break;
-                        case 44: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 0; laneString = "20"; break;
-                        case 45: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 1; laneString = "21"; break;
-                        case 46: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 2; laneString = "22"; break;
-                        case 47: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 3; laneString = "23"; break;
-                        case 48: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 4; laneString = "24"; break;
-                        case 49: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 5; laneString = "25"; break;
-                        case 50: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 6; laneString = "26"; break;
-                        case 51: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 7; laneString = "27"; break;
-                        case 52: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 8; laneString = "28"; break;
-                        case 53: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 9; laneString = "29"; break;
-                        case 54: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 10; laneString = "2a"; break;
-                        case 55: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 11; laneString = "2b"; break;
-                        case 56: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 12; laneString = "2c"; break;
-                        case 57: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 13; laneString = "2d"; break;
-                        case 58: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 14; laneString = "2e"; break;
-                        case 59: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 15; laneString = "2f"; break;
-                        case 60: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 16; laneString = "2g"; break;
-                        case 61: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 0; laneString = "40"; break;
-                        case 62: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 1; laneString = "41"; break;
-                        case 63: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 2; laneString = "42"; break;
-                        case 64: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 3; laneString = "43"; break;
-                        case 65: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 4; laneString = "44"; break;
-                        case 66: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 5; laneString = "45"; break;
-                        case 67: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 6; laneString = "46"; break;
-                        case 68: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 7; laneString = "47"; break;
-                        case 69: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 8; laneString = "48"; break;
-                        case 70: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 9; laneString = "49"; break;
-                        case 71: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 10; laneString = "4a"; break;
-                        case 72: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 11; laneString = "4b"; break;
-                        case 73: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 12; laneString = "4c"; break;
-                        case 74: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 13; laneString = "4d"; break;
-                        case 75: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 14; laneString = "4e"; break;
-                        case 76: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 15; laneString = "4f"; break;
-                        case 77: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 16; laneString = "4g"; break;
-                        case 78: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 0; laneString = "30"; break;
-                        case 79: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 1; laneString = "31"; break;
-                        case 80: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 2; laneString = "32"; break;
-                        case 81: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 3; laneString = "33"; break;
-                        case 82: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 4; laneString = "34"; break;
-                        case 83: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 5; laneString = "35"; break;
-                        case 84: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 6; laneString = "36"; break;
-                        case 85: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 7; laneString = "37"; break;
-                        case 86: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 8; laneString = "38"; break;
-                        case 87: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 9; laneString = "39"; break;
-                        case 88: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 10; laneString = "3a"; break;
-                        case 89: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 11; laneString = "3b"; break;
-                        case 90: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 12; laneString = "3c"; break;
-                        case 91: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 13; laneString = "3d"; break;
-                        case 92: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 14; laneString = "3e"; break;
-                        case 93: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 15; laneString = "3f"; break;
-                        case 94: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 16; laneString = "3g"; break;
+                        // ShortNote
+                        case 1: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 0; laneString = "10"; break;
+                        case 2: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 1; laneString = "11"; break;
+                        case 3: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 2; laneString = "12"; break;
+                        case 4: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 3; laneString = "13"; break;
+                        case 5: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 4; laneString = "14"; break;
+                        case 6: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 5; laneString = "15"; break;
+                        case 7: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 6; laneString = "16"; break;
+                        case 8: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 7; laneString = "17"; break;
+                        case 9: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 8; laneString = "18"; break;
+                        case 10: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 9; laneString = "19"; break;
+                        case 11: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 10; laneString = "1A"; break;
+                        case 12: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 11; laneString = "1B"; break;
+                        case 13: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 12; laneString = "1C"; break;
+                        case 14: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 13; laneString = "1D"; break;
+                        case 15: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 14; laneString = "1E"; break;
+                        case 16: currentType = EntryTypeChuni.Marker; currentPlayer = 1; currentColumn = 15; laneString = "1F"; break;
+                        // Hold
+                        case 17: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 0; laneString = "20"; break;
+                        case 18: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 1; laneString = "21"; break;
+                        case 19: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 2; laneString = "22"; break;
+                        case 20: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 3; laneString = "23"; break;
+                        case 21: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 4; laneString = "24"; break;
+                        case 22: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 5; laneString = "25"; break;
+                        case 23: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 6; laneString = "26"; break;
+                        case 24: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 7; laneString = "27"; break;
+                        case 25: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 8; laneString = "28"; break;
+                        case 26: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 9; laneString = "29"; break;
+                        case 27: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 10; laneString = "2A"; break;
+                        case 28: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 11; laneString = "2B"; break;
+                        case 29: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 12; laneString = "2C"; break;
+                        case 30: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 13; laneString = "2D"; break;
+                        case 31: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 14; laneString = "2E"; break;
+                        case 32: currentType = EntryTypeChuni.Marker; currentPlayer = 2; currentColumn = 15; laneString = "2F"; break;
+                        // Slide
+                        case 33: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 0; laneString = "30"; break;
+                        case 34: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 1; laneString = "31"; break;
+                        case 35: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 2; laneString = "32"; break;
+                        case 36: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 3; laneString = "33"; break;
+                        case 37: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 4; laneString = "34"; break;
+                        case 38: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 5; laneString = "35"; break;
+                        case 39: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 6; laneString = "36"; break;
+                        case 40: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 7; laneString = "37"; break;
+                        case 41: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 8; laneString = "38"; break;
+                        case 42: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 9; laneString = "39"; break;
+                        case 43: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 10; laneString = "3A"; break;
+                        case 44: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 11; laneString = "3B"; break;
+                        case 45: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 12; laneString = "3C"; break;
+                        case 46: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 13; laneString = "3D"; break;
+                        case 47: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 14; laneString = "3E"; break;
+                        case 48: currentType = EntryTypeChuni.Marker; currentPlayer = 3; currentColumn = 15; laneString = "3F"; break;
+                        // AirHold
+                        case 49: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 0; laneString = "40"; break;
+                        case 50: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 1; laneString = "41"; break;
+                        case 51: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 2; laneString = "42"; break;
+                        case 52: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 3; laneString = "43"; break;
+                        case 53: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 4; laneString = "44"; break;
+                        case 54: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 5; laneString = "45"; break;
+                        case 55: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 6; laneString = "46"; break;
+                        case 56: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 7; laneString = "47"; break;
+                        case 57: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 8; laneString = "48"; break;
+                        case 58: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 9; laneString = "49"; break;
+                        case 59: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 10; laneString = "4A"; break;
+                        case 60: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 11; laneString = "4B"; break;
+                        case 61: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 12; laneString = "4C"; break;
+                        case 62: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 13; laneString = "4D"; break;
+                        case 63: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 14; laneString = "4E"; break;
+                        case 64: currentType = EntryTypeChuni.Marker; currentPlayer = 4; currentColumn = 15; laneString = "4F"; break;
+                        // Air
+                        case 65: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 0; laneString = "50"; break;
+                        case 66: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 1; laneString = "51"; break;
+                        case 67: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 2; laneString = "52"; break;
+                        case 68: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 3; laneString = "53"; break;
+                        case 69: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 4; laneString = "54"; break;
+                        case 70: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 5; laneString = "55"; break;
+                        case 71: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 6; laneString = "56"; break;
+                        case 72: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 7; laneString = "57"; break;
+                        case 73: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 8; laneString = "58"; break;
+                        case 74: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 9; laneString = "59"; break;
+                        case 75: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 10; laneString = "5A"; break;
+                        case 76: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 11; laneString = "5B"; break;
+                        case 77: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 12; laneString = "5C"; break;
+                        case 78: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 13; laneString = "5D"; break;
+                        case 79: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 14; laneString = "5E"; break;
+                        case 80: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 15; laneString = "5F"; break;
                         default: currentOperation = 0; currentMeasure++; continue;
                     }
 
@@ -395,24 +268,6 @@ namespace Scharfrichter.Codec.Archives
                             !entry.Used)
                         {
                             entries.Add(entry);
-
-#if (false)
-                            // a little hack for backspin scratches
-                            if (enableBackspinScratch && entry.Column == 7 && entry.Type == EntryTypeChuni.Marker && entry.Freeze == true)
-                            {
-                                Entry backspinEntry = new Entry();
-                                backspinEntry.Column = entry.Column;
-                                backspinEntry.Freeze = false;
-                                backspinEntry.MetricMeasure = entry.MetricMeasure;
-                                backspinEntry.MetricOffset = entry.MetricOffset;
-                                backspinEntry.Parameter = 0;
-                                backspinEntry.Player = entry.Player;
-                                backspinEntry.Type = EntryTypeChuni.Marker;
-                                backspinEntry.Used = false;
-                                backspinEntry.Value = new Fraction(1295, 1);
-                                entries.Add(backspinEntry);
-                            }
-#endif
                         }
                     }
                 }
@@ -547,14 +402,14 @@ namespace Scharfrichter.Codec.Archives
                             {
                                 case 1:
                                     shortNoteWriter.WriteLine(builder.ToString()); break;
-                                case 5:
-                                    airWriter.WriteLine(builder.ToString()); break;
                                 case 2:
                                     holdWriter.WriteLine(builder.ToString()); break;
-                                case 4:
-                                    airHoldWriter.WriteLine(builder.ToString()); break;
                                 case 3:
                                     slideWriter.WriteLine(builder.ToString()); break;
+                                case 4:
+                                    airHoldWriter.WriteLine(builder.ToString()); break;
+                                case 5:
+                                    airWriter.WriteLine(builder.ToString()); break;
                             }
                             
                         }

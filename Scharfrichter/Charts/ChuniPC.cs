@@ -311,7 +311,7 @@ namespace Scharfrichter.Codec.Charts
                             var list = slideDic[tmp];
                             var key = list[0]; list.Remove(key);
                             entry = chart.Entries[key];
-                            entry.Value = new Fraction(entry.Value.Numerator + 20, 1);
+                            entry.Value = new Fraction(entry.Value.Numerator + 10, 1);
                             chart.Entries[key] = entry;
                             if (list.Count <= 0)
                             {
@@ -343,10 +343,10 @@ namespace Scharfrichter.Codec.Charts
                         freezeEntry.Identifier = currentIdentifierTmp;
                         if (parts.Count() > 7)
                         {
-                            freezeEntry.Value = new Fraction(20 + int.Parse(parts[7]), 1);
+                            freezeEntry.Value = new Fraction(40 + int.Parse(parts[7]), 1);
                         } else
                         {
-                            freezeEntry.Value = new Fraction(20 + notesWidth, 1);
+                            freezeEntry.Value = new Fraction(40 + notesWidth, 1);
                         }
                         chart.Entries.Add(freezeEntry);
                         tmp = new Point() { linearOffset = endLinearOffset, position = int.Parse(parts[6]) };
@@ -448,7 +448,7 @@ namespace Scharfrichter.Codec.Charts
                             chart.Tags["TIL00"] = TIL00 + currentMeasure + "'0:" + double.Parse(parts[4]) + ", ";
                         } else
                         {
-                            int calc = (int)(1920.0 * ((double)measurePosition / (double)resolution));
+                            int calc = (int)((480.0 * 4) * ((double)measurePosition / (double)resolution));
                             chart.Tags["TIL00"] = TIL00 + currentMeasure + "'" + calc.ToString() + ":" +double.Parse(parts[4]) + ", ";
                         }
 
@@ -460,15 +460,18 @@ namespace Scharfrichter.Codec.Charts
                         }
                         else
                         {
-                            int calc = (int)(1920.0 * ((double)culcPosition / (double)resolution));
+                            int calc = (int)((480.0 * 4) * ((double)culcPosition / (double)resolution));
                             chart.Tags["TIL00"] += nextMeasure + "'" + calc.ToString() + ":1.0";
                         }
                         chart.Tags["HISPEED"] = "00";
                         break;
+                    default:
+                        Console.WriteLine("There is a sign that has not been defined");
+                        break;
                 }
             }
 
-            for (int i=0; i <= currentMeasure + 1; i++)
+            for (int i=0; i <= currentMeasure + 3; i++)
             {
                 EntryChuni entry = new EntryChuni();
                 int eventOffset = i * resolution;

@@ -172,11 +172,6 @@ namespace ConvertHelper
                 Common.SafeCreateDirectory(dirPath);
                 string output = Path.Combine(dirPath, name + ".sus");
 
-                if (map == null)
-                    sus.GenerateSampleMap();
-                else
-                    sus.SampleMap = map;
-
                 if (quantizeNotes > 0)
                 {
                     try

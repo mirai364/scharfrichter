@@ -76,7 +76,6 @@ Very limited testing on raw IIDX hard drive images only.
 
 ### S3PConverter
 Change s3p to wav files.
-Some songs need to be corrected because they contain noise.
 
 ### PopnToBMS (w/ Usaneko+)
 Should be nearly complete unless new compression methods pop up.

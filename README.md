@@ -80,3 +80,7 @@ Change s3p to wav files.
 ### PopnToBMS (w/ Usaneko+)
 Should be nearly complete unless new compression methods pop up.
 
+### ChuniToSus
+A tool to convert from Chunithm file format (c2s) to sus file format.  
+Reverse conversion is not implemented.  
+For wav conversion of acb file format, please use https://github.com/OpenCGSS/DereTore

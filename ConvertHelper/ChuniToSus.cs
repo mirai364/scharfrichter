@@ -187,6 +187,9 @@ namespace ConvertHelper
                 // create RANK metadata
                 sus.chart.Tags["RANK"] = outputRank.ToString();
 
+                // replace prohibited characters
+                name = Common.nameReplace(name);
+
                 string dirPath = Path.Combine(config["BMS"]["Output"], name);
                 if (chart.Tags["TYPENAME"] == "WORLD'S END")
                 {
@@ -195,9 +198,6 @@ namespace ConvertHelper
                 {
                     name += "(" + sus.chart.Tags["TYPENAME"] + ")";
                 }
-
-                // replace prohibited characters
-                name = Common.nameReplace(name);
 
                 Common.SafeCreateDirectory(dirPath);
                 string output = Path.Combine(dirPath, name + ".sus");

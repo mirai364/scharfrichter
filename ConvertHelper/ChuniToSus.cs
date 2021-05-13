@@ -88,8 +88,6 @@ namespace ConvertHelper
                             string title = musicXml.Element("name").Element("str").Value;
                             string artist = musicXml.Element("artistName").Element("str").Value;
                             string genre = musicXml.Element("genreNames").Element("list").Element("StringID").Element("str").Value;
-                            string previewStartTime = musicXml.Element("previewStartTime").Value;
-                            string previewEndTime = musicXml.Element("previewEndTime").Value;
                             var boxedLunchRow = musicXml.Element("fumens").Elements("MusicFumenData");
 
                             Dictionary<string, MusicData> musicData = new Dictionary<string, MusicData>();
@@ -189,8 +187,9 @@ namespace ConvertHelper
 
                 // replace prohibited characters
                 name = Common.nameReplace(name);
+                string genre = Common.nameReplace(chart.Tags["GENRE"]);
 
-                string dirPath = Path.Combine(config["BMS"]["Output"], name);
+                string dirPath = Path.Combine(config["BMS"]["Output"], genre, name);
                 if (chart.Tags["TYPENAME"] == "WORLD'S END")
                 {
                     name += "(" + sus.chart.Tags["TYPENAME"] + " " + chart.Tags["TYPE"].Substring(2) + chart.Tags["PLAYLEVEL"] + ")";

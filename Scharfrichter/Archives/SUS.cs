@@ -378,12 +378,7 @@ namespace Scharfrichter.Codec.Archives
                                         if (entryIndex <= 0)
                                         {
                                             bpmCount++;
-
-                                            // this is a hack to make the numbers decimal
-                                            if (bpmCount % 36 == 10)
-                                                bpmCount += 26;
-
-                                            headerWriter.WriteLine("#BPM" + Util.ConvertToBMEString(bpmCount, 2) + " " + (Math.Round((double)(entry.Value), 3)).ToString());
+                                            headerWriter.WriteLine("#BPM" + bpmCount.ToString("00") + ":" + (Math.Round((double)(entry.Value), 3)).ToString());
                                             entryIndex = bpmCount;
                                             bpmMap[entryIndex] = entry.Value;
                                         }

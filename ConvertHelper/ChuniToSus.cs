@@ -11,6 +11,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Linq;
 using System.Xml.Linq;
+using DDSReader;
 
 namespace ConvertHelper
 {
@@ -133,6 +134,22 @@ namespace ConvertHelper
 
                             ConvertChart(chart, config, filename, 1, null, "1");
                             break;
+                        case @".DDS":
+                            // Find ID
+                            fileName = Path.GetFileName(filename);
+                            // Read Music file 
+                            C2sDir = Path.GetDirectoryName(filename) + "\\";
+                            musicXml = XElement.Load(Path.Combine(C2sDir, "Music.xml"));
+                            title = musicXml.Element("name").Element("str").Value;
+                            genre = musicXml.Element("genreNames").Element("list").Element("StringID").Element("str").Value;
+
+                            DDSImage img = new DDSImage(filename);
+
+                            string dirPath = Path.Combine(config["BMS"]["Output"], Common.nameReplace(genre), Common.nameReplace(title), "jacket.jpg");
+                            img.Save(dirPath);
+
+                            break;
+
                     }
                 }
             }

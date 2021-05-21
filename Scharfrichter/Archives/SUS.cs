@@ -72,10 +72,10 @@ namespace Scharfrichter.Codec.Archives
 
         public bool Write(Stream target, bool enableBackspinScratch)
         {
-            int DelayPoint = 0;
             Dictionary<int, Fraction> bpmMap = new Dictionary<int, Fraction>();
             BinaryWriter writer = new BinaryWriter(target, Encoding.GetEncoding(932));
             MemoryStream header = new MemoryStream();
+            MemoryStream measure = new MemoryStream();
             MemoryStream shortNote = new MemoryStream();
             MemoryStream hold = new MemoryStream();
             MemoryStream slide = new MemoryStream();
@@ -83,6 +83,7 @@ namespace Scharfrichter.Codec.Archives
             MemoryStream air = new MemoryStream();
 
             StreamWriter headerWriter = new StreamWriter(header);
+            StreamWriter measureWriter = new StreamWriter(measure);     measureWriter.WriteLine("");    measureWriter.WriteLine("Measure's pulse");
             StreamWriter shortNoteWriter = new StreamWriter(shortNote); shortNoteWriter.WriteLine("");  shortNoteWriter.WriteLine("ShortNote");
             StreamWriter holdWriter = new StreamWriter(hold);           holdWriter.WriteLine("");       holdWriter.WriteLine("Hold");
             StreamWriter slideWriter = new StreamWriter(slide);         slideWriter.WriteLine("");      slideWriter.WriteLine("Slide");
@@ -110,7 +111,7 @@ namespace Scharfrichter.Codec.Archives
             headerWriter.WriteLine("");
             headerWriter.WriteLine("Request");
             headerWriter.WriteLine("#REQUEST \"mertonome enabled\"");
-            headerWriter.WriteLine("#REQUEST \"ticks_per_beat 480\"");
+            headerWriter.WriteLine("#REQUEST \"ticks_per_beat " + chart.Tags["RESOLUTION"] + "\"");
             headerWriter.WriteLine("");
             headerWriter.WriteLine("BPM");
 
@@ -145,7 +146,7 @@ namespace Scharfrichter.Codec.Archives
                         case 00:
                             measureEntries.Clear();
 
-                            int tmpCurrentMeasure = currentMeasure + DelayPoint;
+                            int tmpCurrentMeasure = currentMeasure;
                             measureString = tmpCurrentMeasure.ToString();
                             while (measureString.Length < 3)
                                 measureString = "0" + measureString;
@@ -245,10 +246,13 @@ namespace Scharfrichter.Codec.Archives
                         case 79: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 14; laneString = "5E"; break;
                         case 80: currentType = EntryTypeChuni.Marker; currentPlayer = 5; currentColumn = 15; laneString = "5F"; break;
                         case 81: currentType = EntryTypeChuni.Tempo; currentPlayer = 0; currentColumn = 0; laneString = "08"; break;
+                        case 82: currentType = EntryTypeChuni.Event; currentPlayer = 0; currentColumn = 0; laneString = "02"; break;
+                        case 83: currentType = EntryTypeChuni.Event; currentPlayer = 1; currentColumn = 0; laneString = ""; break;
                         default: currentOperation = 0; currentMeasure++; continue;
                     }
 
                     // separate events we'll use
+                    EntryChuni pastEntry = new EntryChuni();
                     foreach (var entry in measureEntries)
                     {
                         if (entry.MetricMeasure == currentMeasure &&
@@ -257,7 +261,13 @@ namespace Scharfrichter.Codec.Archives
                             entry.Column == currentColumn &&
                             !entry.Used)
                         {
-                            entries.Add(entry);
+                            if (currentType != EntryTypeChuni.Event ||
+                                currentPlayer != 1 ||
+                                (int)entry.LinearOffset != (int)pastEntry.LinearOffset)
+                            {
+                                entries.Add(entry);
+                            }
+                            pastEntry = entry;
                         }
                     }
                 }
@@ -378,7 +388,7 @@ namespace Scharfrichter.Codec.Archives
                                         if (entryIndex <= 0)
                                         {
                                             bpmCount++;
-                                            headerWriter.WriteLine("#BPM" + bpmCount.ToString("00") + ":" + (Math.Round((double)(entry.Value), 3)).ToString());
+                                            headerWriter.WriteLine("#BPM" + Util.ConvertToBMEString(bpmCount, 2) + ":" + (Math.Round((double)(entry.Value), 3)).ToString());
                                             entryIndex = bpmCount;
                                             bpmMap[entryIndex] = entry.Value;
                                         }
@@ -390,6 +400,45 @@ namespace Scharfrichter.Codec.Archives
                                     {
                                         repeat = true;
                                     }
+                                }
+                            }
+                        }
+                        else if (currentType == EntryTypeChuni.Event && currentPlayer == 0)
+                        {
+                            measureWriter.WriteLine("#" + measureString + laneStringTmp + ":" + (double)entries[0].Value * 4);
+                        }
+                        else if (currentType == EntryTypeChuni.Event && currentPlayer == 1)
+                        {
+                            foreach (var entry in entries)
+                            {
+
+                                string TIL00 = "";
+                                if (chart.Tags.ContainsKey("TIL00"))
+                                {
+                                    TIL00 = chart.Tags["TIL00"] + ", ";
+                                }
+
+                                double value = 0.0f;
+                                if (entry.ValueInitialized)
+                                {
+                                    value = (double)entry.Value;
+                                }
+
+                                double resolution = (double)int.Parse(chart.Tags["RESOLUTION"]);
+                                double offset = 0.0f;
+                                if (entry.MetricOffsetInitialized)
+                                {
+                                    offset = resolution * (double)entry.MetricOffset;
+                                }
+
+                                if (offset == 0)
+                                {
+                                    chart.Tags["TIL00"] = TIL00 + currentMeasure + "'0:" + value;
+                                }
+                                else
+                                {
+                                    int calc = (int)((resolution * 4) * (offset / resolution));
+                                    chart.Tags["TIL00"] = TIL00 + currentMeasure + "'" + calc.ToString() + ":" + value;
                                 }
                             }
                         }
@@ -427,7 +476,21 @@ namespace Scharfrichter.Codec.Archives
 
                             for (int i = 0; i < length; i++)
                             {
-                                builder.Append(values[i].ToString("00"));
+                                string marker;
+                                if (currentType == EntryTypeChuni.Marker)
+                                {
+                                    int type = values[i] / 100;
+                                    int notesLength = values[i] - type * 100;
+                                    marker = type.ToString("0") + Util.ConvertToBMEString(notesLength, 1);
+                                }
+                                else if (currentType == EntryTypeChuni.Tempo) {
+                                    marker = Util.ConvertToBMEString(values[i], 2);
+                                }
+                                else
+                                {
+                                    marker = values[i].ToString("00");
+                                }
+                                builder.Append(marker);
                             }
 
                             switch (currentPlayer)
@@ -454,19 +517,16 @@ namespace Scharfrichter.Codec.Archives
                     currentOperation++;
             }
 
-            headerWriter.WriteLine("");
-            headerWriter.WriteLine("Measure's pulse");
-            headerWriter.WriteLine("#00002: 4");
-
             if (chart.Tags.ContainsKey("TIL00"))
             {
-                headerWriter.WriteLine("");
-                headerWriter.WriteLine("#TIL00: " + "\"" + chart.Tags["TIL00"] + "\"");
-                headerWriter.WriteLine("#HISPEED 00");
+                measureWriter.WriteLine("");
+                measureWriter.WriteLine("#TIL00: " + "\"" + chart.Tags["TIL00"] + "\"");
+                measureWriter.WriteLine("#HISPEED 00");
             }
 
             // finalize data and dump to stream
             headerWriter.Flush();
+            measureWriter.Flush();
             shortNoteWriter.Flush();
             holdWriter.Flush();
             slideWriter.Flush();
@@ -474,6 +534,7 @@ namespace Scharfrichter.Codec.Archives
             airWriter.Flush();
 
             writer.Write(header.ToArray());
+            writer.Write(measure.ToArray());
             writer.Write(shortNote.ToArray());
             writer.Write(hold.ToArray());
             writer.Write(slide.ToArray());

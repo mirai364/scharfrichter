@@ -22,6 +22,7 @@ namespace Scharfrichter.Codec.Charts
         public static ChartChuni Read(StreamReader source)
         {
             ChartChuni chart = new ChartChuni();
+            ChartChuni metChart = new ChartChuni();
             Fraction[,] lastSample = new Fraction[9, 2];
             string line;
             int resolution = 0;
@@ -39,16 +40,13 @@ namespace Scharfrichter.Codec.Charts
                 if (parts[0] == "RESOLUTION")
                 {
                     resolution = int.Parse(parts[1]);
+                    chart.Tags["RESOLUTION"] = resolution.ToString();
                 }
                 if (parts[0] == "CREATOR")
                 {
                     chart.Tags["DESIGNER"] = parts[1];
                 }
                 if (parts[0].Length != 3)
-                {
-                    continue;
-                }
-                if (parts[0] == "MET")
                 {
                     continue;
                 }
@@ -72,6 +70,13 @@ namespace Scharfrichter.Codec.Charts
 
                 switch (parts[0])
                 {
+                    case "MET":
+                        entry.Type = EntryTypeChuni.Event;
+                        entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
+                        entry.Value = new Fraction(int.Parse(parts[4]), int.Parse(parts[3]));
+                        chart.Entries.Add(entry);
+                        metChart.Entries.Add(entry);
+                        break;
                     case "BPM":
                         entry.Type = EntryTypeChuni.Tempo;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
@@ -83,7 +88,7 @@ namespace Scharfrichter.Codec.Charts
                         entry.Player = 1;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Column = notesPosition;
-                        entry.Value = new Fraction(10 + notesWidth, 1);
+                        entry.Value = new Fraction(100 + notesWidth, 1);
                         chart.Entries.Add(entry);
                         break;
                     case "CHR":
@@ -91,13 +96,13 @@ namespace Scharfrichter.Codec.Charts
                         entry.Player = 1;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Column = notesPosition;
-                        entry.Value = new Fraction(20 + notesWidth, 1);
+                        entry.Value = new Fraction(200 + notesWidth, 1);
                         chart.Entries.Add(entry);
                         break;
                     case "HLD":
                         int startLinearOffset = currentMeasure * resolution + measurePosition;
                         int endLinearOffset = startLinearOffset + int.Parse(parts[5]);
-                        int endResetPoint = endLinearOffset; // (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
+                        int endResetPoint = (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
                         if (startLinearOffset <= holdResetPoint.resetLinearOffset)
                         {
                             holdResetPoint.currentIdentifier++;
@@ -116,7 +121,7 @@ namespace Scharfrichter.Codec.Charts
                             var list = holdDic[tmp];
                             var key = list[0]; list.Remove(key);
                             entry = chart.Entries[key];
-                            entry.Value = new Fraction(entry.Value.Numerator + 10, 1);
+                            entry.Value = new Fraction(entry.Value.Numerator + 100, 1);
                             chart.Entries[key] = entry;
                             if (list.Count <= 0)
                             {
@@ -134,7 +139,7 @@ namespace Scharfrichter.Codec.Charts
                             entry.LinearOffset = new Fraction(startLinearOffset, 1);
                             entry.Column = notesPosition;
                             entry.Identifier = currentIdentifierTmp;
-                            entry.Value = new Fraction(10 + notesWidth, 1);
+                            entry.Value = new Fraction(100 + notesWidth, 1);
                             chart.Entries.Add(entry);
                         }
 
@@ -145,7 +150,7 @@ namespace Scharfrichter.Codec.Charts
                         freezeEntry.LinearOffset = new Fraction(endLinearOffset, 1);
                         freezeEntry.Column = notesPosition;
                         freezeEntry.Identifier = currentIdentifierTmp;
-                        freezeEntry.Value = new Fraction(20 + notesWidth, 1);
+                        freezeEntry.Value = new Fraction(200 + notesWidth, 1);
                         chart.Entries.Add(freezeEntry);
                         tmp = new Point() { linearOffset = endLinearOffset, position = notesPosition};
                         if (holdDic.ContainsKey(tmp))
@@ -165,7 +170,7 @@ namespace Scharfrichter.Codec.Charts
                         entry.Player = 1;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Column = notesPosition;
-                        entry.Value = new Fraction(30 + notesWidth, 1);
+                        entry.Value = new Fraction(300 + notesWidth, 1);
                         chart.Entries.Add(entry);
                         break;
                     case "AIR":
@@ -173,7 +178,7 @@ namespace Scharfrichter.Codec.Charts
                         entry.Player = 5;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Column = notesPosition;
-                        entry.Value = new Fraction(10 + notesWidth, 1);
+                        entry.Value = new Fraction(100 + notesWidth, 1);
                         chart.Entries.Add(entry);
                         break;
                     case "AUL":
@@ -181,7 +186,7 @@ namespace Scharfrichter.Codec.Charts
                         entry.Player = 5;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Column = notesPosition;
-                        entry.Value = new Fraction(30 + notesWidth, 1);
+                        entry.Value = new Fraction(300 + notesWidth, 1);
                         chart.Entries.Add(entry);
                         break;
                     case "AUR":
@@ -189,7 +194,7 @@ namespace Scharfrichter.Codec.Charts
                         entry.Player = 5;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Column = notesPosition;
-                        entry.Value = new Fraction(40 + notesWidth, 1);
+                        entry.Value = new Fraction(400 + notesWidth, 1);
                         chart.Entries.Add(entry);
                         break;
                     case "ADW":
@@ -197,7 +202,7 @@ namespace Scharfrichter.Codec.Charts
                         entry.Player = 5;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Column = notesPosition;
-                        entry.Value = new Fraction(20 + notesWidth, 1);
+                        entry.Value = new Fraction(200 + notesWidth, 1);
                         chart.Entries.Add(entry);
                         break;
                     case "ADL":
@@ -205,7 +210,7 @@ namespace Scharfrichter.Codec.Charts
                         entry.Player = 5;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Column = notesPosition;
-                        entry.Value = new Fraction(50 + notesWidth, 1);
+                        entry.Value = new Fraction(500 + notesWidth, 1);
                         chart.Entries.Add(entry);
                         break;
                     case "ADR":
@@ -213,13 +218,23 @@ namespace Scharfrichter.Codec.Charts
                         entry.Player = 5;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Column = notesPosition;
-                        entry.Value = new Fraction(60 + notesWidth, 1);
+                        entry.Value = new Fraction(600 + notesWidth, 1);
                         chart.Entries.Add(entry);
                         break;
                     case "AHD":
                         startLinearOffset = currentMeasure * resolution + measurePosition;
+                        if (parts[5] == "TAP" || parts[5] == "CHR")
+                        {
+                            var anotherEntry = new EntryChuni();
+                            anotherEntry.Type = EntryTypeChuni.Marker;
+                            anotherEntry.Player = 5;
+                            anotherEntry.LinearOffset = new Fraction(startLinearOffset, 1);
+                            anotherEntry.Column = notesPosition;
+                            anotherEntry.Value = new Fraction(100 + notesWidth, 1);
+                            chart.Entries.Add(anotherEntry);
+                        }
                         endLinearOffset = startLinearOffset + int.Parse(parts[6]);
-                        endResetPoint = endLinearOffset; // (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
+                        endResetPoint = (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
                         if (startLinearOffset <= airHolddResetPoint.resetLinearOffset)
                         {
                             airHolddResetPoint.currentIdentifier++;
@@ -238,7 +253,7 @@ namespace Scharfrichter.Codec.Charts
                             var list = airHoldDic[tmp];
                             var key = list[0]; list.Remove(key);
                             entry = chart.Entries[key];
-                            entry.Value = new Fraction(entry.Value.Numerator + 10, 1);
+                            entry.Value = new Fraction(entry.Value.Numerator + 100, 1);
                             chart.Entries[key] = entry;
                             if (list.Count <= 0)
                             {
@@ -258,7 +273,7 @@ namespace Scharfrichter.Codec.Charts
                             entry.LinearOffset = new Fraction(startLinearOffset, 1);
                             entry.Column = notesPosition;
                             entry.Identifier = currentIdentifierTmp;
-                            entry.Value = new Fraction(10 + notesWidth, 1);
+                            entry.Value = new Fraction(100 + notesWidth, 1);
                             chart.Entries.Add(entry);
                         }
 
@@ -269,7 +284,7 @@ namespace Scharfrichter.Codec.Charts
                         freezeEntry.LinearOffset = new Fraction(endLinearOffset, 1);
                         freezeEntry.Column = notesPosition;
                         freezeEntry.Identifier = currentIdentifierTmp;
-                        freezeEntry.Value = new Fraction(20 + notesWidth, 1);
+                        freezeEntry.Value = new Fraction(200 + notesWidth, 1);
                         chart.Entries.Add(freezeEntry);
                         tmp = new Point() { linearOffset = endLinearOffset, position = notesPosition };
                         if (airHoldDic.ContainsKey(tmp))
@@ -289,13 +304,13 @@ namespace Scharfrichter.Codec.Charts
                         entry.Player = 1;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
                         entry.Column = notesPosition;
-                        entry.Value = new Fraction(40 + notesWidth, 1);
+                        entry.Value = new Fraction(400 + notesWidth, 1);
                         chart.Entries.Add(entry);
                         break;
                     case "SLC":
                         startLinearOffset = currentMeasure * resolution + measurePosition;
                         endLinearOffset = startLinearOffset + int.Parse(parts[5]);
-                        endResetPoint = endLinearOffset; // (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
+                        endResetPoint = (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
                         if (startLinearOffset <= slideResetPoint.resetLinearOffset)
                         {
                             slideResetPoint.currentIdentifier++;
@@ -314,7 +329,7 @@ namespace Scharfrichter.Codec.Charts
                             var list = slideDic[tmp];
                             var key = list[0]; list.Remove(key);
                             entry = chart.Entries[key];
-                            entry.Value = new Fraction(entry.Value.Numerator + 10, 1);
+                            entry.Value = new Fraction(entry.Value.Numerator + 100, 1);
                             chart.Entries[key] = entry;
                             if (list.Count <= 0)
                             {
@@ -334,7 +349,7 @@ namespace Scharfrichter.Codec.Charts
                             entry.LinearOffset = new Fraction(startLinearOffset, 1);
                             entry.Column = notesPosition;
                             entry.Identifier = currentIdentifierTmp;
-                            entry.Value = new Fraction(10 + notesWidth, 1);
+                            entry.Value = new Fraction(100 + notesWidth, 1);
                             chart.Entries.Add(entry);
                         }
 
@@ -347,10 +362,10 @@ namespace Scharfrichter.Codec.Charts
                         freezeEntry.Identifier = currentIdentifierTmp;
                         if (parts.Count() > 7)
                         {
-                            freezeEntry.Value = new Fraction(40 + int.Parse(parts[7]), 1);
+                            freezeEntry.Value = new Fraction(400 + int.Parse(parts[7]), 1);
                         } else
                         {
-                            freezeEntry.Value = new Fraction(40 + notesWidth, 1);
+                            freezeEntry.Value = new Fraction(400 + notesWidth, 1);
                         }
                         chart.Entries.Add(freezeEntry);
                         tmp = new Point() { linearOffset = endLinearOffset, position = int.Parse(parts[6]) };
@@ -369,7 +384,7 @@ namespace Scharfrichter.Codec.Charts
                     case "SLD":
                         startLinearOffset = currentMeasure * resolution + measurePosition;
                         endLinearOffset = startLinearOffset + int.Parse(parts[5]);
-                        endResetPoint = endLinearOffset; // (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
+                        endResetPoint = (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
                         if (startLinearOffset <= slideResetPoint.resetLinearOffset)
                         {
                             slideResetPoint.currentIdentifier++;
@@ -388,7 +403,7 @@ namespace Scharfrichter.Codec.Charts
                             var list = slideDic[tmp];
                             var key = list[0]; list.Remove(key);
                             entry = chart.Entries[key];
-                            entry.Value = new Fraction(entry.Value.Numerator + 10, 1);
+                            entry.Value = new Fraction(entry.Value.Numerator + 100, 1);
                             chart.Entries[key] = entry;
                             if (list.Count <= 0)
                             {
@@ -408,7 +423,7 @@ namespace Scharfrichter.Codec.Charts
                             entry.LinearOffset = new Fraction(startLinearOffset, 1);
                             entry.Column = notesPosition;
                             entry.Identifier = currentIdentifierTmp;
-                            entry.Value = new Fraction(10 + notesWidth, 1);
+                            entry.Value = new Fraction(100 + notesWidth, 1);
                             chart.Entries.Add(entry);
                         }
 
@@ -421,11 +436,11 @@ namespace Scharfrichter.Codec.Charts
                         freezeEntry.Identifier = currentIdentifierTmp;
                         if (parts.Count() > 7)
                         {
-                            freezeEntry.Value = new Fraction(20 + int.Parse(parts[7]), 1);
+                            freezeEntry.Value = new Fraction(200 + int.Parse(parts[7]), 1);
                         }
                         else
                         {
-                            freezeEntry.Value = new Fraction(20 + notesWidth, 1);
+                            freezeEntry.Value = new Fraction(200 + notesWidth, 1);
                         }
                         chart.Entries.Add(freezeEntry);
                         tmp = new Point() { linearOffset = endLinearOffset, position = int.Parse(parts[6]) };
@@ -442,45 +457,49 @@ namespace Scharfrichter.Codec.Charts
                         }
                         break;
                     case "SFL":
-                        string TIL00 = "";
-                        if (chart.Tags.ContainsKey("TIL00"))
+                        startLinearOffset = currentMeasure * resolution + measurePosition;
+                        endLinearOffset = startLinearOffset + notesPosition;
+                        entry = new EntryChuni();
+                        entry.LinearOffset = new Fraction(startLinearOffset, 1);
+                        entry.Type = EntryTypeChuni.Event;
+                        entry.Player = 1;
+                        double speed = double.Parse(parts[4]);
+                        if (speed == 0.0f)
                         {
-                            TIL00 = chart.Tags["TIL00"] + ", ";
-                        }
-
-                        if (measurePosition == 0)
-                        {
-                            chart.Tags["TIL00"] = TIL00 + currentMeasure + "'0:" + double.Parse(parts[4]) + ", ";
+                            entry.Value = new Fraction(0, 0);
                         } else
                         {
-                            int calc = (int)((480.0 * 4) * ((double)measurePosition / (double)resolution));
-                            chart.Tags["TIL00"] = TIL00 + currentMeasure + "'" + calc.ToString() + ":" +double.Parse(parts[4]) + ", ";
+                            entry.Value = new Fraction((long)(speed * 1000000), 1000000);
                         }
+                        chart.Entries.Add(entry);
 
-                        int nextMeasure = (int)Math.Floor(((double)currentMeasure * (double)resolution + (double)measurePosition + (double)notesPosition) / (double)resolution);
-                        int culcPosition = currentMeasure * resolution + measurePosition + notesPosition - nextMeasure * resolution;
-                        if (culcPosition == 0)
-                        {
-                            chart.Tags["TIL00"] += nextMeasure + "'0:1.0";
-                        }
-                        else
-                        {
-                            int calc = (int)((480.0 * 4) * ((double)culcPosition / (double)resolution));
-                            chart.Tags["TIL00"] += nextMeasure + "'" + calc.ToString() + ":1.0";
-                        }
-                        chart.Tags["HISPEED"] = "00";
+                        freezeEntry = new EntryChuni();
+                        freezeEntry.LinearOffset = new Fraction(endLinearOffset, 1);
+                        freezeEntry.Type = EntryTypeChuni.Event;
+                        freezeEntry.Player = 1;
+                        freezeEntry.Value = new Fraction(1, 1);
+                        chart.Entries.Add(freezeEntry);
                         break;
                     default:
-                        Console.WriteLine("There is a sign that has not been defined");
+                        Console.WriteLine("There is a sign that has not been defined: " + parts[0]);
                         break;
                 }
             }
 
-            for (int i=0; i <= currentMeasure + 3; i++)
+            // calc measure
+            int calcMesure = 0;
+            float calcbeat = 1.0f;
+            int nextChartCount = 0;
+            for (int i = 0; i <= currentMeasure + metChart.Entries.Count; i++)
             {
+                if (metChart.Entries.Count > nextChartCount && (int)(double)metChart.Entries[nextChartCount].LinearOffset == calcMesure)
+                {
+                    nextChartCount++;
+                    calcbeat = (float)metChart.Entries[nextChartCount - 1].Value;
+                }
                 EntryChuni entry = new EntryChuni();
-                int eventOffset = i * resolution;
-                entry.LinearOffset = new Fraction(eventOffset, 1);
+                calcMesure += (int)(resolution * calcbeat);
+                entry.LinearOffset = new Fraction(calcMesure, 1);
                 entry.Type = EntryTypeChuni.Measure;
                 entry.Player = 1;
                 entry.Value = new Fraction(0, 1);

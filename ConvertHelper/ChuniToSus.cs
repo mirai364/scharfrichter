@@ -246,7 +246,7 @@ namespace ConvertHelper
                 {
                     try
                     {
-                        sus.chart.quantizeNotes = quantizeNotes;
+                        sus.chart.quantizeNotes = int.Parse(chart.Tags["RESOLUTION"]);
                         sus.chart.QuantizeNoteOffsets();
                     }
                     catch (Exception)

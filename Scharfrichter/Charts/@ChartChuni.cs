@@ -650,6 +650,17 @@ namespace Scharfrichter.Codec.Charts
             if (other.Identifier < this.Identifier)
                 return 1;
 
+            if (other.ValueInitialized && this.ValueInitialized)
+            {
+                double myFloat = (double)value;
+                double otherFloat = (double)other.value;
+
+                if (otherFloat > myFloat)
+                    return 1;
+                if (otherFloat < myFloat)
+                    return -1;
+            }
+
             // these must come at the beginning
             if (this.Type == EntryTypeChuni.Measure && other.Type != EntryTypeChuni.Measure)
             {

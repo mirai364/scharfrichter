@@ -98,23 +98,47 @@ namespace ConvertHelper
                                 {
                                     if (boxedLunchElement.Element("type").Element("id").Value == "4")
                                     {
+                                        string star = "";
+                                        switch (musicXml.Element("starDifType").Value)
+                                        {
+                                            case "9":
+                                                star = "5";
+                                                break;
+                                            case "7":
+                                                star = "4";
+                                                break;
+                                            case "5":
+                                                star = "3";
+                                                break;
+                                            case "3":
+                                                star = "2";
+                                                break;
+                                            case "1":
+                                                star = "1";
+                                                break;
+                                        }
+
                                         musicData.Add(
                                             boxedLunchElement.Element("file").Element("path").Value,
                                             new MusicData()
                                             {
                                                 type = boxedLunchElement.Element("type").Element("id").Value + ":" + musicXml.Element("worldsEndTagName").Element("str").Value,
                                                 typeName = boxedLunchElement.Element("type").Element("data").Value,
-                                                level = musicXml.Element("starDifType").Value
+                                                level = star
                                             }
                                         );
                                     } else
                                     {
+                                        string levelDecimal = "";
+                                        if(int.Parse(boxedLunchElement.Element("levelDecimal").Value) >= 50) {
+                                            levelDecimal = "+";
+                                        }
                                         musicData.Add(
                                             boxedLunchElement.Element("file").Element("path").Value,
                                             new MusicData() {
                                                 type = boxedLunchElement.Element("type").Element("id").Value,
                                                 typeName = boxedLunchElement.Element("type").Element("data").Value,
-                                                level = boxedLunchElement.Element("level").Value
+                                                level = boxedLunchElement.Element("level").Value + levelDecimal
                                             }
                                         );
                                     }

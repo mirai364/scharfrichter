@@ -405,7 +405,15 @@ namespace Scharfrichter.Codec.Archives
                         }
                         else if (currentType == EntryTypeChuni.Event && currentPlayer == 0)
                         {
-                            measureWriter.WriteLine("#" + measureString + laneStringTmp + ":" + (double)entries[0].Value * 4);
+                            if (entries[0].Value.Denominator != 0 &&
+                                entries[0].Value.Numerator != 0)
+                            {
+                                measureWriter.WriteLine("#" + measureString + laneStringTmp + ":" + (double)entries[0].Value * 4);
+                            }
+                            else
+                            {
+                                measureWriter.WriteLine("#" + measureString + laneStringTmp + ":" + 4);
+                            }
                         }
                         else if (currentType == EntryTypeChuni.Event && currentPlayer == 1)
                         {

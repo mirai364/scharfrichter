@@ -27,9 +27,9 @@ namespace Scharfrichter.Codec.Charts
             string line;
             int resolution = 0;
             int currentMeasure = 0;
-            resetPoint holdResetPoint = new resetPoint() { resetLinearOffset = 0, currentIdentifier = 0 };
-            resetPoint slideResetPoint = new resetPoint() { resetLinearOffset = 0, currentIdentifier = 0 };
-            resetPoint airHolddResetPoint = new resetPoint() { resetLinearOffset = 0, currentIdentifier = 0 };
+            Dictionary<int, int> holdResetPoint = new Dictionary<int, int>();
+            Dictionary<int, int> slideResetPoint = new Dictionary<int, int>();
+            Dictionary<int, int> airHoldResetPoint = new Dictionary<int, int>();
 
             Dictionary<Point, List<int>> holdDic = new Dictionary<Point, List<int>>();
             Dictionary<Point, List<int>> slideDic = new Dictionary<Point, List<int>>();
@@ -50,6 +50,10 @@ namespace Scharfrichter.Codec.Charts
                 {
                     continue;
                 }
+                if (parts[0] == "CLK")
+                {
+                    continue;
+                }
                 currentMeasure = int.Parse(parts[1]);
                 int measurePosition = int.Parse(parts[2]);
                 int notesPosition = 0;
@@ -62,6 +66,25 @@ namespace Scharfrichter.Codec.Charts
                         notesWidth = tmp;
                 }
 
+
+                List<int> idList = holdResetPoint.Keys.ToList();
+                foreach (int id in idList)
+                {
+                    if (holdResetPoint[id] < currentMeasure * resolution + measurePosition)
+                        holdResetPoint.Remove(id);
+                }
+                idList = slideResetPoint.Keys.ToList();
+                foreach (int id in idList)
+                {
+                    if (slideResetPoint[id] < currentMeasure * resolution + measurePosition)
+                        slideResetPoint.Remove(id);
+                }
+                idList = airHoldResetPoint.Keys.ToList();
+                foreach (int id in idList)
+                {
+                    if (airHoldResetPoint[id] < currentMeasure * resolution + measurePosition)
+                        airHoldResetPoint.Remove(id);
+                }
 
                 EntryChuni entry = new EntryChuni();
                 int eventOffset = 0;
@@ -103,17 +126,17 @@ namespace Scharfrichter.Codec.Charts
                         int startLinearOffset = currentMeasure * resolution + measurePosition;
                         int endLinearOffset = startLinearOffset + int.Parse(parts[5]);
                         int endResetPoint = (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
-                        if (startLinearOffset <= holdResetPoint.resetLinearOffset)
+
+                        int currentIdentifierTmp = 0;
+                        for (int i=1; i< 26; i++)
                         {
-                            holdResetPoint.currentIdentifier++;
-                            holdResetPoint.resetLinearOffset = Math.Max(holdResetPoint.resetLinearOffset, endResetPoint);
+                            if (!holdResetPoint.ContainsKey(i))
+                            {
+                                holdResetPoint[i] = endResetPoint;
+                                currentIdentifierTmp = i;
+                                break;
+                            }
                         }
-                        else
-                        {
-                            holdResetPoint.currentIdentifier = 0;
-                            holdResetPoint.resetLinearOffset = endResetPoint;
-                        }
-                        int currentIdentifierTmp = holdResetPoint.currentIdentifier;
 
                         Point tmp = new Point() { linearOffset = startLinearOffset, position = notesPosition };
                         if (holdDic.ContainsKey(tmp))
@@ -130,8 +153,8 @@ namespace Scharfrichter.Codec.Charts
                             {
                                 holdDic[tmp] = list;
                             }
+                            holdResetPoint.Remove(currentIdentifierTmp);
                             currentIdentifierTmp = entry.Identifier;
-                            holdResetPoint.currentIdentifier--;
                         } else
                         {
                             entry.Type = EntryTypeChuni.Marker;
@@ -223,7 +246,7 @@ namespace Scharfrichter.Codec.Charts
                         break;
                     case "AHD":
                         startLinearOffset = currentMeasure * resolution + measurePosition;
-                        if (parts[5] == "TAP" || parts[5] == "CHR")
+                        if (parts[5] != "AHD")
                         {
                             var anotherEntry = new EntryChuni();
                             anotherEntry.Type = EntryTypeChuni.Marker;
@@ -235,17 +258,17 @@ namespace Scharfrichter.Codec.Charts
                         }
                         endLinearOffset = startLinearOffset + int.Parse(parts[6]);
                         endResetPoint = (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
-                        if (startLinearOffset <= airHolddResetPoint.resetLinearOffset)
+
+                        currentIdentifierTmp = 0;
+                        for (int i = 1; i < 26; i++)
                         {
-                            airHolddResetPoint.currentIdentifier++;
-                            airHolddResetPoint.resetLinearOffset = Math.Max(airHolddResetPoint.resetLinearOffset, endResetPoint);
+                            if (!airHoldResetPoint.ContainsKey(i))
+                            {
+                                airHoldResetPoint[i] = endResetPoint;
+                                currentIdentifierTmp = i;
+                                break;
+                            }
                         }
-                        else
-                        {
-                            airHolddResetPoint.currentIdentifier = 0;
-                            airHolddResetPoint.resetLinearOffset = endResetPoint;
-                        }
-                        currentIdentifierTmp = airHolddResetPoint.currentIdentifier;
 
                         tmp = new Point() { linearOffset = startLinearOffset, position = notesPosition };
                         if (airHoldDic.ContainsKey(tmp))
@@ -263,8 +286,8 @@ namespace Scharfrichter.Codec.Charts
                             {
                                 airHoldDic[tmp] = list;
                             }
+                            airHoldResetPoint.Remove(currentIdentifierTmp);
                             currentIdentifierTmp = entry.Identifier;
-                            airHolddResetPoint.currentIdentifier--;
                         }
                         else
                         {
@@ -311,17 +334,17 @@ namespace Scharfrichter.Codec.Charts
                         startLinearOffset = currentMeasure * resolution + measurePosition;
                         endLinearOffset = startLinearOffset + int.Parse(parts[5]);
                         endResetPoint = (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
-                        if (startLinearOffset <= slideResetPoint.resetLinearOffset)
+
+                        currentIdentifierTmp = 0;
+                        for (int i = 1; i < 26; i++)
                         {
-                            slideResetPoint.currentIdentifier++;
-                            slideResetPoint.resetLinearOffset = Math.Max(slideResetPoint.resetLinearOffset, endResetPoint);
+                            if (!slideResetPoint.ContainsKey(i))
+                            {
+                                slideResetPoint[i] = endResetPoint;
+                                currentIdentifierTmp = i;
+                                break;
+                            }
                         }
-                        else
-                        {
-                            slideResetPoint.currentIdentifier = 0;
-                            slideResetPoint.resetLinearOffset = endResetPoint;
-                        }
-                        currentIdentifierTmp = slideResetPoint.currentIdentifier;
 
                         tmp = new Point() { linearOffset = startLinearOffset, position = notesPosition };
                         if (slideDic.ContainsKey(tmp))
@@ -339,8 +362,8 @@ namespace Scharfrichter.Codec.Charts
                             {
                                 slideDic[tmp] = list;
                             }
+                            slideResetPoint.Remove(currentIdentifierTmp);
                             currentIdentifierTmp = entry.Identifier;
-                            slideResetPoint.currentIdentifier--;
                         }
                         else
                         {
@@ -385,17 +408,17 @@ namespace Scharfrichter.Codec.Charts
                         startLinearOffset = currentMeasure * resolution + measurePosition;
                         endLinearOffset = startLinearOffset + int.Parse(parts[5]);
                         endResetPoint = (int)((Math.Ceiling(endLinearOffset / (double)resolution) + 1) * resolution);
-                        if (startLinearOffset <= slideResetPoint.resetLinearOffset)
+
+                        currentIdentifierTmp = 0;
+                        for (int i = 1; i < 26; i++)
                         {
-                            slideResetPoint.currentIdentifier++;
-                            slideResetPoint.resetLinearOffset = Math.Max(slideResetPoint.resetLinearOffset, endResetPoint);
+                            if (!slideResetPoint.ContainsKey(i))
+                            {
+                                slideResetPoint[i] = endResetPoint;
+                                currentIdentifierTmp = i;
+                                break;
+                            }
                         }
-                        else
-                        {
-                            slideResetPoint.currentIdentifier = 0;
-                            slideResetPoint.resetLinearOffset = endResetPoint;
-                        }
-                        currentIdentifierTmp = slideResetPoint.currentIdentifier;
 
                         tmp = new Point() { linearOffset = startLinearOffset, position = notesPosition };
                         if (slideDic.ContainsKey(tmp))
@@ -413,8 +436,8 @@ namespace Scharfrichter.Codec.Charts
                             {
                                 slideDic[tmp] = list;
                             }
+                            slideResetPoint.Remove(currentIdentifierTmp);
                             currentIdentifierTmp = entry.Identifier;
-                            slideResetPoint.currentIdentifier--;
                         }
                         else
                         {
@@ -480,6 +503,23 @@ namespace Scharfrichter.Codec.Charts
                         freezeEntry.Value = new Fraction(1, 1);
                         chart.Entries.Add(freezeEntry);
                         break;
+                    case "STP":
+                        startLinearOffset = currentMeasure * resolution + measurePosition;
+                        endLinearOffset = startLinearOffset + int.Parse(parts[3]);
+                        entry = new EntryChuni();
+                        entry.LinearOffset = new Fraction(startLinearOffset, 1);
+                        entry.Type = EntryTypeChuni.Event;
+                        entry.Player = 1;
+                        entry.Value = new Fraction(0, 0);
+                        chart.Entries.Add(entry);
+
+                        freezeEntry = new EntryChuni();
+                        freezeEntry.LinearOffset = new Fraction(endLinearOffset, 1);
+                        freezeEntry.Type = EntryTypeChuni.Event;
+                        freezeEntry.Player = 1;
+                        freezeEntry.Value = new Fraction(1, 1);
+                        chart.Entries.Add(freezeEntry);
+                        break;
                     default:
                         Console.WriteLine("There is a sign that has not been defined: " + parts[0]);
                         break;
@@ -490,12 +530,20 @@ namespace Scharfrichter.Codec.Charts
             int calcMesure = 0;
             float calcbeat = 1.0f;
             int nextChartCount = 0;
-            for (int i = 0; i <= currentMeasure + metChart.Entries.Count; i++)
+            for (int i = 0; i <= currentMeasure + metChart.Entries.Count + 10; i++)
             {
                 if (metChart.Entries.Count > nextChartCount && (int)(double)metChart.Entries[nextChartCount].LinearOffset == calcMesure)
                 {
+                    if (metChart.Entries[nextChartCount].Value.Denominator != 0 &&
+                        metChart.Entries[nextChartCount].Value.Numerator != 0)
+                    {
+                        calcbeat = (float)metChart.Entries[nextChartCount].Value;
+                    }
+                    else
+                    {
+                        calcbeat = 1.0f;
+                    }
                     nextChartCount++;
-                    calcbeat = (float)metChart.Entries[nextChartCount - 1].Value;
                 }
                 EntryChuni entry = new EntryChuni();
                 calcMesure += (int)(resolution * calcbeat);

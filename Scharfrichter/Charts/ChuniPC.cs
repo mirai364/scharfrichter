@@ -155,6 +155,7 @@ namespace Scharfrichter.Codec.Charts
                             }
                             holdResetPoint.Remove(currentIdentifierTmp);
                             currentIdentifierTmp = entry.Identifier;
+                            holdResetPoint[currentIdentifierTmp] = endResetPoint;
                         } else
                         {
                             entry.Type = EntryTypeChuni.Marker;
@@ -288,6 +289,7 @@ namespace Scharfrichter.Codec.Charts
                             }
                             airHoldResetPoint.Remove(currentIdentifierTmp);
                             currentIdentifierTmp = entry.Identifier;
+                            airHoldResetPoint[currentIdentifierTmp] = endResetPoint;
                         }
                         else
                         {
@@ -364,6 +366,7 @@ namespace Scharfrichter.Codec.Charts
                             }
                             slideResetPoint.Remove(currentIdentifierTmp);
                             currentIdentifierTmp = entry.Identifier;
+                            slideResetPoint[currentIdentifierTmp] = endResetPoint;
                         }
                         else
                         {
@@ -438,6 +441,7 @@ namespace Scharfrichter.Codec.Charts
                             }
                             slideResetPoint.Remove(currentIdentifierTmp);
                             currentIdentifierTmp = entry.Identifier;
+                            slideResetPoint[currentIdentifierTmp] = endResetPoint;
                         }
                         else
                         {

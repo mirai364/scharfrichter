@@ -59,140 +59,148 @@ namespace ConvertHelper
             // process files
             for (int i = 0; i < args.Length; i++)
             {
-                if (File.Exists(args[i]))
+                try
                 {
-                    Console.WriteLine();
-                    Console.WriteLine("Processing File: " + args[i]);
-                    string filename = args[i];
-                    if (output == "")
-                        output = Path.GetDirectoryName(filename) + "\\";
+                    if (File.Exists(args[i]))
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("Processing File: " + args[i]);
+                        string filename = args[i];
+                        if (output == "")
+                            output = Path.GetDirectoryName(filename) + "\\";
 
-                    string IIDXDBName = Path.GetFileNameWithoutExtension(filename);
-                    string version = IIDXDBName.Substring(0, 2);
-                    bool isPre2DX = false;
-                    string INDEX = null;
-                    if (IIDXDBName.Contains("pre"))
-                    {
-                        isPre2DX = true;
-                        IIDXDBName = IIDXDBName.Substring(0, 5);
-                    }
-                    if (IIDXDBName.Length > 5)
-                    {
-                        INDEX = IIDXDBName.Substring(5);
-                        IIDXDBName = IIDXDBName.Substring(0, 5);
-                    }
-                    while (IIDXDBName.StartsWith("0"))
-                        IIDXDBName = IIDXDBName.Substring(1);
+                        string IIDXDBName = Path.GetFileNameWithoutExtension(filename);
+                        string version = IIDXDBName.Substring(0, 2);
+                        bool isPre2DX = false;
+                        string INDEX = null;
+                        if (IIDXDBName.Contains("pre"))
+                        {
+                            isPre2DX = true;
+                            IIDXDBName = IIDXDBName.Substring(0, 5);
+                        }
+                        if (IIDXDBName.Length > 5)
+                        {
+                            INDEX = IIDXDBName.Substring(5);
+                            IIDXDBName = IIDXDBName.Substring(0, 5);
+                        }
+                        while (IIDXDBName.StartsWith("0"))
+                            IIDXDBName = IIDXDBName.Substring(1);
 
-                    byte[] data = File.ReadAllBytes(args[i]);
-                    switch (Path.GetExtension(args[i]).ToUpper())
-                    {
-                        case @".1":
-                            using (MemoryStream source = new MemoryStream(data))
-                            {
-                                Dictionary<int, int> ignore = new Dictionary<int, int>();
-                                if (idUseRenderAutoTip)
+                        byte[] data = File.ReadAllBytes(args[i]);
+                        switch (Path.GetExtension(args[i]).ToUpper())
+                        {
+                            case @".1":
+                                using (MemoryStream source = new MemoryStream(data))
                                 {
-                                    Console.WriteLine("Convert AutoTips");
-                                    Console.WriteLine(args[i].Remove(args[i].Length - 8));
-                                    string[] files = System.IO.Directory.GetFiles(args[i].Remove(args[i].Length - 8), "*", SearchOption.AllDirectories);
-                                    Render.RenderWAV(files, 1, 1000, true);
-
-                                    ignore.Add(3, 3);
-                                }
-                                Bemani1 archive = Bemani1.Read(source, unitNumerator, unitDenominator, ignore);
-
-                                if (db[IIDXDBName]["TITLE"] != "")
-                                {
-                                    for (int j = 0; j < archive.ChartCount; j++)
+                                    Dictionary<int, int> ignore = new Dictionary<int, int>();
+                                    if (idUseRenderAutoTip)
                                     {
-                                        Chart chart = archive.Charts[j];
-                                        if (chart != null)
+                                        Console.WriteLine("Convert AutoTips");
+                                        Console.WriteLine(args[i].Remove(args[i].Length - 8));
+                                        string[] files = System.IO.Directory.GetFiles(args[i].Remove(args[i].Length - 8), "*", SearchOption.AllDirectories);
+                                        Render.RenderWAV(files, 1, 1000, true);
+
+                                        ignore.Add(3, 3);
+                                    }
+                                    Bemani1 archive = Bemani1.Read(source, unitNumerator, unitDenominator, ignore);
+
+                                    if (db[IIDXDBName]["TITLE"] != "")
+                                    {
+                                        for (int j = 0; j < archive.ChartCount; j++)
                                         {
-                                            chart.Tags["TITLE"] = db[IIDXDBName]["TITLE"];
-                                            chart.Tags["ARTIST"] = db[IIDXDBName]["ARTIST"];
-                                            chart.Tags["GENRE"] = db[IIDXDBName]["GENRE"];
-                                            chart.Tags["VIDEO"] = db[IIDXDBName]["VIDEO"];
-                                            chart.Tags["VIDEODELAY"] = db[IIDXDBName]["VIDEODELAY"];
-                                            if (j < 6)
+                                            Chart chart = archive.Charts[j];
+                                            if (chart != null)
                                             {
-                                                chart.Tags["PLAYLEVEL"] = db[IIDXDBName]["DIFFICULTYSP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
-                                                chart.Tags["KEYSET"] = db[IIDXDBName]["KEYSETSP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
-                                                chart.Tags["ISUSERENDERAUTOTIP"] = idUseRenderAutoTip.ToString();
-                                            }
-                                            else if (j < 12)
-                                            {
-                                                chart.Tags["PLAYLEVEL"] = db[IIDXDBName]["DIFFICULTYDP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
-                                                chart.Tags["KEYSET"] = db[IIDXDBName]["KEYSETDP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
-                                                chart.Tags["ISUSERENDERAUTOTIP"] = idUseRenderAutoTip.ToString();
+                                                chart.Tags["TITLE"] = db[IIDXDBName]["TITLE"];
+                                                chart.Tags["ARTIST"] = db[IIDXDBName]["ARTIST"];
+                                                chart.Tags["GENRE"] = db[IIDXDBName]["GENRE"];
+                                                chart.Tags["VIDEO"] = db[IIDXDBName]["VIDEO"];
+                                                chart.Tags["VIDEODELAY"] = db[IIDXDBName]["VIDEODELAY"];
+                                                if (j < 6)
+                                                {
+                                                    chart.Tags["PLAYLEVEL"] = db[IIDXDBName]["DIFFICULTYSP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
+                                                    chart.Tags["KEYSET"] = db[IIDXDBName]["KEYSETSP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
+                                                    chart.Tags["ISUSERENDERAUTOTIP"] = idUseRenderAutoTip.ToString();
+                                                }
+                                                else if (j < 12)
+                                                {
+                                                    chart.Tags["PLAYLEVEL"] = db[IIDXDBName]["DIFFICULTYDP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
+                                                    chart.Tags["KEYSET"] = db[IIDXDBName]["KEYSETDP" + config["IIDX"]["DIFFICULTY" + j.ToString()]];
+                                                    chart.Tags["ISUSERENDERAUTOTIP"] = idUseRenderAutoTip.ToString();
+                                                }
                                             }
                                         }
                                     }
+
+                                    ConvertArchive(archive, config, args[i], version, idUseRenderAutoTip);
                                 }
-
-                                ConvertArchive(archive, config, args[i], version, idUseRenderAutoTip);
-                            }
-                            break;
-                        case @".2DX":
-                            using (MemoryStream source = new MemoryStream(data))
-                            {
-                                Console.WriteLine("Converting Samples");
-                                Bemani2DX archive = Bemani2DX.Read(source);
-
-                                float volume = 0.6f;
-                                string title = "";
-                                if (db[IIDXDBName]["TITLE"] != "")
+                                break;
+                            case @".2DX":
+                                using (MemoryStream source = new MemoryStream(data))
                                 {
-                                    volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
-                                    title = db[IIDXDBName]["TITLE"];
-                                }
-                                ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX, version);
-                            }
-                            break;
-                        case @".S3P":
-                            using (MemoryStream source = new MemoryStream(data))
-                            {
-                                Console.WriteLine("Converting Samples");
-                                BemaniS3P archive = BemaniS3P.Read(source);
+                                    Console.WriteLine("Converting Samples");
+                                    Bemani2DX archive = Bemani2DX.Read(source);
 
-                                float volume = 0.6f;
-                                string title = "";
-                                if (db[IIDXDBName]["TITLE"] != "")
-                                {
-                                    volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
-                                    title = db[IIDXDBName]["TITLE"];
+
+                                    float volume = 0.6f;
+                                    string title = "";
+                                    if (db[IIDXDBName]["TITLE"] != "")
+                                    {
+                                        volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
+                                        title = db[IIDXDBName]["TITLE"];
+                                    }
+                                    ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX, version);
                                 }
-                                ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX, version);
-                            }
-                            break;
-                        case @".CS":
-                            using (MemoryStream source = new MemoryStream(data))
-                                ConvertChart(BeatmaniaIIDXCSNew.Read(source), config, filename, -1, null);
-                            break;
-                        case @".CS2":
-                            using (MemoryStream source = new MemoryStream(data))
-                                ConvertChart(BeatmaniaIIDXCSOld.Read(source), config, filename, -1, null);
-                            break;
-                        case @".CS5":
-                            using (MemoryStream source = new MemoryStream(data))
-                                ConvertChart(Beatmania5Key.Read(source), config, filename, -1, null);
-                            break;
-                        case @".CS9":
-                            break;
-                        case @".SD9":
-                            using (MemoryStream source = new MemoryStream(data))
-                            {
-                                Sound sound = BemaniSD9.Read(source);
-                                string targetFile = Path.GetFileNameWithoutExtension(filename);
-                                string targetPath = Path.Combine(Path.GetDirectoryName(filename), targetFile) + ".wav";
-                                sound.WriteFile(targetPath, 1.0f);
-                            }
-                            break;
-                        case @".SSP":
-                            using (MemoryStream source = new MemoryStream(data))
-                                ConvertSounds(BemaniSSP.Read(source).Sounds, filename, 1.0f);
-                            break;
+                                break;
+                            case @".S3P":
+                                using (MemoryStream source = new MemoryStream(data))
+                                {
+                                    Console.WriteLine("Converting Samples");
+                                    BemaniS3P archive = BemaniS3P.Read(source);
+
+                                    float volume = 0.6f;
+                                    string title = "";
+                                    if (db[IIDXDBName]["TITLE"] != "")
+                                    {
+                                        volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
+                                        title = db[IIDXDBName]["TITLE"];
+                                    }
+                                    ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX, version);
+                                }
+                                break;
+                            case @".CS":
+                                using (MemoryStream source = new MemoryStream(data))
+                                    ConvertChart(BeatmaniaIIDXCSNew.Read(source), config, filename, -1, null);
+                                break;
+                            case @".CS2":
+                                using (MemoryStream source = new MemoryStream(data))
+                                    ConvertChart(BeatmaniaIIDXCSOld.Read(source), config, filename, -1, null);
+                                break;
+                            case @".CS5":
+                                using (MemoryStream source = new MemoryStream(data))
+                                    ConvertChart(Beatmania5Key.Read(source), config, filename, -1, null);
+                                break;
+                            case @".CS9":
+                                break;
+                            case @".SD9":
+                                using (MemoryStream source = new MemoryStream(data))
+                                {
+                                    Sound sound = BemaniSD9.Read(source);
+                                    string targetFile = Path.GetFileNameWithoutExtension(filename);
+                                    string targetPath = Path.Combine(Path.GetDirectoryName(filename), targetFile) + ".wav";
+                                    sound.WriteFile(targetPath, 1.0f);
+                                }
+                                break;
+                            case @".SSP":
+                                using (MemoryStream source = new MemoryStream(data))
+                                    ConvertSounds(BemaniSSP.Read(source).Sounds, filename, 1.0f);
+                                break;
+                        }
                     }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("{0} Exception caught." + args[i], e);
                 }
             }
 

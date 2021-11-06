@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Scharfrichter.Common
 {
@@ -30,6 +31,13 @@ namespace Scharfrichter.Common
             nameInfo = nameInfo.Replace("\\", "_");
             nameInfo = nameInfo.Replace("\"", "_");
             nameInfo = nameInfo.Replace("*", "_");
+
+            Regex reg = new Regex(@"\.\.\.$");
+            nameInfo = reg.Replace(nameInfo, "…");
+            reg = new Regex(@"\.\.$");
+            nameInfo = reg.Replace(nameInfo, "_");
+            reg = new Regex(@"\.$");
+            nameInfo = reg.Replace(nameInfo, "_");
             return nameInfo;
         }
 

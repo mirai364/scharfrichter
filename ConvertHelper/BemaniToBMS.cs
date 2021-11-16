@@ -247,6 +247,7 @@ namespace ConvertHelper
             title = title.Trim();
             string movieFolder = config["BMS"]["MovieFolder"];
             bool isSameFolderMovie = config["BMS"].GetBool("IsSameFolderMovie");
+            bool useMovie = config["BMS"].GetBool("UseMovie");
             int outputRank = config["BMS"].GetValue("OutputRank");
 
             if (quantizeMeasure > 0)
@@ -299,7 +300,8 @@ namespace ConvertHelper
                 string output = Path.Combine(dirPath, @"@" + name + ".bms");
 
                 bms.Charts[0].isSameFolderMovie = isSameFolderMovie;
-                if (chart.Tags.ContainsKey("VIDEO") && isSameFolderMovie)
+                bms.Charts[0].useMovie = useMovie;
+                if (chart.Tags.ContainsKey("VIDEO") && isSameFolderMovie && useMovie)
                 {
                     string BGA = chart.Tags["VIDEO"];
                     string movieFile = movieFolder + BGA + ".wmv";

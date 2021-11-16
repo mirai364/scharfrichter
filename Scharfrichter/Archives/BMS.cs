@@ -406,7 +406,7 @@ namespace Scharfrichter.Codec.Archives
             expansionWriter.WriteLine("");
             expansionWriter.WriteLine("*---------------------- EXPANSION FIELD");
             expansionWriter.WriteLine("#PREVIEW preview.wav");
-            if (chart.Tags.ContainsKey("VIDEO"))
+            if (chart.Tags.ContainsKey("VIDEO") && chart.useMovie)
             {
                 if (chart.isSameFolderMovie)
                 {

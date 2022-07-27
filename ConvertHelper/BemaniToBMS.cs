@@ -20,7 +20,6 @@ namespace ConvertHelper
             Configuration config = Configuration.LoadIIDXConfig(Common.configFileName);
             Configuration db = Common.LoadDB();
             int quantizeMeasure = config["BMS"].GetValue("QuantizeMeasure");
-            int quantizeNotes = config["BMS"].GetValue("QuantizeNotes");
 
             // splash
             Splash.Show("Bemani to BeMusic Script");
@@ -87,6 +86,7 @@ namespace ConvertHelper
                             IIDXDBName = IIDXDBName.Substring(1);
 
                         byte[] data = File.ReadAllBytes(args[i]);
+                        DateTime updateTime = File.GetLastWriteTime(args[i]);
                         switch (Path.GetExtension(args[i]).ToUpper())
                         {
                             case @".1":
@@ -97,7 +97,7 @@ namespace ConvertHelper
                                     {
                                         Console.WriteLine("Convert AutoTips");
                                         Console.WriteLine(args[i].Remove(args[i].Length - 8));
-                                        string[] files = System.IO.Directory.GetFiles(args[i].Remove(args[i].Length - 8), "*", SearchOption.AllDirectories);
+                                        string[] files = Directory.GetFiles(args[i].Remove(args[i].Length - 8), "*", SearchOption.AllDirectories);
                                         Render.RenderWAV(files, 1, 1000, true);
 
                                         ignore.Add(3, 3);
@@ -132,7 +132,7 @@ namespace ConvertHelper
                                         }
                                     }
 
-                                    ConvertArchive(archive, config, args[i], version, idUseRenderAutoTip);
+                                    ConvertArchive(archive, config, args[i], updateTime, version, idUseRenderAutoTip);
                                 }
                                 break;
                             case @".2DX":
@@ -149,7 +149,7 @@ namespace ConvertHelper
                                         volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
                                         title = db[IIDXDBName]["TITLE"];
                                     }
-                                    ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX, version);
+                                    ConvertSounds(archive.Sounds, filename, volume, updateTime, INDEX, output, title, isPre2DX, version);
                                 }
                                 break;
                             case @".S3P":
@@ -165,20 +165,20 @@ namespace ConvertHelper
                                         volume = float.Parse(db[IIDXDBName]["VOLUME"]) / 127.0f;
                                         title = db[IIDXDBName]["TITLE"];
                                     }
-                                    ConvertSounds(archive.Sounds, filename, volume, INDEX, output, title, isPre2DX, version);
+                                    ConvertSounds(archive.Sounds, filename, volume, updateTime, INDEX, output, title, isPre2DX, version);
                                 }
                                 break;
                             case @".CS":
                                 using (MemoryStream source = new MemoryStream(data))
-                                    ConvertChart(BeatmaniaIIDXCSNew.Read(source), config, filename, -1, null);
+                                    ConvertChart(BeatmaniaIIDXCSNew.Read(source), config, filename, -1, null, updateTime);
                                 break;
                             case @".CS2":
                                 using (MemoryStream source = new MemoryStream(data))
-                                    ConvertChart(BeatmaniaIIDXCSOld.Read(source), config, filename, -1, null);
+                                    ConvertChart(BeatmaniaIIDXCSOld.Read(source), config, filename, -1, null, updateTime);
                                 break;
                             case @".CS5":
                                 using (MemoryStream source = new MemoryStream(data))
-                                    ConvertChart(Beatmania5Key.Read(source), config, filename, -1, null);
+                                    ConvertChart(Beatmania5Key.Read(source), config, filename, -1, null, updateTime);
                                 break;
                             case @".CS9":
                                 break;
@@ -193,7 +193,7 @@ namespace ConvertHelper
                                 break;
                             case @".SSP":
                                 using (MemoryStream source = new MemoryStream(data))
-                                    ConvertSounds(BemaniSSP.Read(source).Sounds, filename, 1.0f);
+                                    ConvertSounds(BemaniSSP.Read(source).Sounds, filename, 1.0f, updateTime);
                                 break;
                         }
                     }
@@ -208,7 +208,7 @@ namespace ConvertHelper
             Console.WriteLine("BemaniToBMS finished.");
         }
 
-        static public void ConvertArchive(Archive archive, Configuration config, string filename, string version = "", bool idUseRenderAutoTip = false)
+        static public void ConvertArchive(Archive archive, Configuration config, string filename, DateTime updateTime, string version = "", bool idUseRenderAutoTip = false)
         {
             bool isSucces = false;
             for (int j = 0; j < archive.ChartCount; j++)
@@ -216,7 +216,7 @@ namespace ConvertHelper
                 if (archive.Charts[j] != null)
                 {
                     Console.WriteLine("Converting Chart " + j.ToString());
-                    isSucces = ConvertChart(archive.Charts[j], config, filename, j, null, version);
+                    isSucces = ConvertChart(archive.Charts[j], config, filename, j, null, updateTime, version);
                     if (!isSucces)
                         break;
                 }
@@ -233,7 +233,7 @@ namespace ConvertHelper
 
         }
 
-        static public bool ConvertChart(Chart chart, Configuration config, string filename, int index, int[] map, string version = "")
+        static public bool ConvertChart(Chart chart, Configuration config, string filename, int index, int[] map, DateTime updateTime, string version = "")
         {
             if (config == null)
             {
@@ -305,10 +305,10 @@ namespace ConvertHelper
                 {
                     string BGA = chart.Tags["VIDEO"];
                     string movieFile = movieFolder + BGA + ".wmv";
-                    if (System.IO.File.Exists(movieFile))
+                    if (File.Exists(movieFile))
                     {
                         string copyPath = dirPath + "\\" + BGA + ".wmv";
-                        if (!System.IO.File.Exists(copyPath))
+                        if (!File.Exists(copyPath))
                         {
                             Console.WriteLine(copyPath);
                             File.Copy(movieFile, copyPath);
@@ -339,11 +339,12 @@ namespace ConvertHelper
 
                 //File.WriteAllBytes(output, mem.ToArray());
                 File.WriteAllText(output, Encoding.UTF8.GetString(mem.ToArray()), Encoding.GetEncoding(932));
+                File.SetLastWriteTime(output, updateTime);
             }
             return true;
         }
 
-        static public void ConvertSounds(Sound[] sounds, string filename, float volume, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "")
+        static public void ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "")
         {
             string name;
             if (nameInfo.Length == 0)
@@ -359,7 +360,10 @@ namespace ConvertHelper
 
             if (isPre2DX)
             {
-                sounds[0].WriteFile(Path.Combine(targetPath, @"preview" + @".wav"), volume);
+
+                string output = Path.Combine(targetPath, @"preview" + @".wav");
+                sounds[0].WriteFile(output, volume);
+                File.SetLastWriteTime(output, updateTime);
             }
             else
             {
@@ -369,12 +373,15 @@ namespace ConvertHelper
                     targetPath += "_" + INDEX;
                 }
                 Common.SafeCreateDirectory(targetPath);
+                Directory.SetLastWriteTime(targetPath, updateTime);
                 int count = sounds.Length;
 
                 for (int j = 0; j < count; j++)
                 {
                     int sampleIndex = j + 1;
-                    sounds[j].WriteFile(Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".wav"), volume);
+                    string output = Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".wav");
+                    sounds[j].WriteFile(output, volume);
+                    File.SetLastWriteTime(output, updateTime);
                 }
             }
         }

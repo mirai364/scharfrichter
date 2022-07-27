@@ -245,13 +245,13 @@ namespace DJMainExtract
                                         Directory.CreateDirectory(soundPath);
                                         for (int chartIndex = 0; chartIndex < chunk.ChartCount; chartIndex++)
                                         {
-                                            ConvertHelper.BemaniToBMS.ConvertChart(chunk.Charts[chartIndex], config, chartPath, chartIndex, chunk.SampleMaps[sampleMapAssignment[chartIndex]]);
+                                            ConvertHelper.BemaniToBMS.ConvertChart(chunk.Charts[chartIndex], config, chartPath, chartIndex, chunk.SampleMaps[sampleMapAssignment[chartIndex]], DateTime.Now);
                                         }
 
                                         Console.WriteLine("Consolidating set " + j.ToString());
                                         ConvertHelper.StereoCombiner.Process(chunk.Sounds, chunk.Charts, stereoAmp);
                                         Console.WriteLine("Writing set " + j.ToString());
-                                        ConvertHelper.BemaniToBMS.ConvertSounds(chunk.Sounds, soundPath, 0.6f);
+                                        ConvertHelper.BemaniToBMS.ConvertSounds(chunk.Sounds, soundPath, 0.6f, DateTime.Now);
                                     }
                                     else
                                     {

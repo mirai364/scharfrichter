@@ -339,7 +339,10 @@ namespace ConvertHelper
 
                 //File.WriteAllBytes(output, mem.ToArray());
                 File.WriteAllText(output, Encoding.UTF8.GetString(mem.ToArray()), Encoding.GetEncoding(932));
+                // Rewrite date/time based on file date/time
+                File.SetCreationTime(output, updateTime);
                 File.SetLastWriteTime(output, updateTime);
+                File.SetLastAccessTime(output, updateTime);
             }
             return true;
         }
@@ -360,10 +363,12 @@ namespace ConvertHelper
 
             if (isPre2DX)
             {
-
                 string output = Path.Combine(targetPath, @"preview" + @".wav");
                 sounds[0].WriteFile(output, volume);
+                // Rewrite date/time based on file date/time
+                File.SetCreationTime(output, updateTime);
                 File.SetLastWriteTime(output, updateTime);
+                File.SetLastAccessTime(output, updateTime);
             }
             else
             {
@@ -373,7 +378,6 @@ namespace ConvertHelper
                     targetPath += "_" + INDEX;
                 }
                 Common.SafeCreateDirectory(targetPath);
-                Directory.SetLastWriteTime(targetPath, updateTime);
                 int count = sounds.Length;
 
                 for (int j = 0; j < count; j++)
@@ -381,8 +385,16 @@ namespace ConvertHelper
                     int sampleIndex = j + 1;
                     string output = Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".wav");
                     sounds[j].WriteFile(output, volume);
+                    // Rewrite date/time based on file date/time
+                    File.SetCreationTime(output, updateTime);
                     File.SetLastWriteTime(output, updateTime);
+                    File.SetLastAccessTime(output, updateTime);
                 }
+
+                // Rewrite date/time based on file date/time
+                Directory.SetCreationTime(targetPath, updateTime);
+                Directory.SetLastWriteTime(targetPath, updateTime);
+                Directory.SetLastAccessTime(targetPath, updateTime);
             }
         }
     }

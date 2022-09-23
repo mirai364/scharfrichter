@@ -64,6 +64,7 @@ namespace ConvertHelper
                         continue;
                     }
 
+                    DateTime updateTime = File.GetLastWriteTime(filename);
                     string title = Path.GetFileNameWithoutExtension(filename);
                     string input = Path.GetDirectoryName(filename) + "\\";
                     if (output == "")
@@ -89,7 +90,7 @@ namespace ConvertHelper
                                     titleTmp = db[title]["TITLE"];
 
                                 float volume = 0.6f;
-                                ConvertSounds(archive.Sounds, filename, volume, null, output, titleTmp, true, "");
+                                ConvertSounds(archive.Sounds, filename, volume, updateTime, null, output, titleTmp, true, "");
                             }
                         }
                         catch (Exception e)
@@ -152,7 +153,7 @@ namespace ConvertHelper
                                     break;
                                 //case 5:
                                 //    // Battle
-                                //    filename = output + title + "_bp.bin";
+                                //    filename = input + title + "_bp.bin";
                                 //    if (!File.Exists(filename))
                                 //    {
                                 //        continue;
@@ -163,6 +164,7 @@ namespace ConvertHelper
                             }
 
                             byte[] data = File.ReadAllBytes(filename);
+                            updateTime = File.GetLastWriteTime(filename);
 
                             try
                             {
@@ -178,9 +180,14 @@ namespace ConvertHelper
                                                 chart.Tags["TITLE"] = db[title]["TITLE"];
                                                 chart.Tags["ARTIST"] = db[title]["ARTIST"];
                                                 chart.Tags["GENRE"] = db[title]["GENRE"];
-                                                chart.Tags["PLAYLEVEL"] = db[title]["DIFFICULTYDP" + config["IIDX"]["DIFFICULTY" + difficaltyIndex.ToString()]];
+                                                string playerLevel = db[title]["DIFFICULTYDP" + config["IIDX"]["DIFFICULTY" + difficaltyIndex.ToString()]];
+                                                if (Int32.Parse(playerLevel) <= 0)
+                                                {
+                                                    break;
+                                                }
+                                                chart.Tags["PLAYLEVEL"] = playerLevel;
                                             }
-                                            ConvertChart(archive.Charts[0], config, title, difficaltyIndex, null, "", output);
+                                            ConvertChart(archive.Charts[0], config, title, difficaltyIndex, null, updateTime, "", output);
 
                                         }
                                         break;
@@ -194,7 +201,7 @@ namespace ConvertHelper
                                                 titleTmp = db[title]["TITLE"];
 
                                             float volume = 0.6f;
-                                            maxIndex = ConvertSounds(archive.Sounds, filename, volume, null, output, titleTmp, false, "");
+                                            maxIndex = ConvertSounds(archive.Sounds, filename, volume, updateTime, null, output, titleTmp, false, "");
                                         }
                                         break;
                                 }
@@ -218,7 +225,7 @@ namespace ConvertHelper
             Console.WriteLine();
         }
 
-        static public bool ConvertChart(Chart chart, Configuration config, string filename, int index, int[] map, string version = "", string dirPath = "")
+        static public bool ConvertChart(Chart chart, Configuration config, string filename, int index, int[] map, DateTime updateTime, string version = "", string dirPath = "")
         {
             if (config == null)
             {
@@ -306,11 +313,15 @@ namespace ConvertHelper
                     return false;
 
                 File.WriteAllText(output, Encoding.UTF8.GetString(mem.ToArray()), Encoding.GetEncoding(932));
+                // Rewrite date/time based on file date/time
+                File.SetCreationTime(output, updateTime);
+                File.SetLastWriteTime(output, updateTime);
+                File.SetLastAccessTime(output, updateTime);
             }
             return true;
         }
 
-        static public int ConvertSounds(Sound[] sounds, string filename, float volume, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "")
+        static public int ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "")
         {
             string name;
             if (nameInfo.Length == 0)
@@ -328,7 +339,12 @@ namespace ConvertHelper
             int maxLength = 0;
             if (isPre2DX)
             {
-                sounds[0].WriteFile(Path.Combine(targetPath, @"preview" + @".wav"), volume);
+                string output = Path.Combine(targetPath, @"preview" + @".wav");
+                sounds[0].WriteFile(output, volume);
+                // Rewrite date/time based on file date/time
+                File.SetCreationTime(output, updateTime);
+                File.SetLastWriteTime(output, updateTime);
+                File.SetLastAccessTime(output, updateTime);
             }
             else
             {
@@ -348,8 +364,18 @@ namespace ConvertHelper
                         maxIndex = sampleIndex;
                         maxLength = sounds[j].Data.Length;
                     }
-                    sounds[j].WriteFile(Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".wav"), volume);
+                    string output = Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".wav");
+                    sounds[j].WriteFile(output, volume);
+                    // Rewrite date/time based on file date/time
+                    File.SetCreationTime(output, updateTime);
+                    File.SetLastWriteTime(output, updateTime);
+                    File.SetLastAccessTime(output, updateTime);
                 }
+
+                // Rewrite date/time based on file date/time
+                Directory.SetCreationTime(targetPath, updateTime);
+                Directory.SetLastWriteTime(targetPath, updateTime);
+                Directory.SetLastAccessTime(targetPath, updateTime);
             }
             return maxIndex;
         }

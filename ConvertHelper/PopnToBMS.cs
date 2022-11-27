@@ -40,6 +40,7 @@ namespace ConvertHelper
                 Console.WriteLine("2DX");
             }
 
+            string category = "";
             string output = config["BMS"]["Output"];
 
             // process files
@@ -87,10 +88,13 @@ namespace ConvertHelper
                                 Bemani2DX archive = Bemani2DX.Read(source);
                                 string titleTmp = title;
                                 if (db[title]["TITLE"] != "")
+                                {
                                     titleTmp = db[title]["TITLE"];
+                                    category = String.Format("{0:00}", db[title]["CATEGORY"]);
+                                }
 
                                 float volume = 0.6f;
-                                ConvertSounds(archive.Sounds, filename, volume, updateTime, null, output, titleTmp, true, "");
+                                ConvertSounds(archive.Sounds, filename, volume, updateTime, null, output, titleTmp, true, category);
                             }
                         }
                         catch (Exception e)
@@ -180,6 +184,7 @@ namespace ConvertHelper
                                                 chart.Tags["TITLE"] = db[title]["TITLE"];
                                                 chart.Tags["ARTIST"] = db[title]["ARTIST"];
                                                 chart.Tags["GENRE"] = db[title]["GENRE"];
+                                                category = String.Format("{0:00}", db[title]["CATEGORY"]);
                                                 string playerLevel = db[title]["DIFFICULTYDP" + config["IIDX"]["DIFFICULTY" + difficaltyIndex.ToString()]];
                                                 if (Int32.Parse(playerLevel) <= 0)
                                                 {
@@ -187,7 +192,7 @@ namespace ConvertHelper
                                                 }
                                                 chart.Tags["PLAYLEVEL"] = playerLevel;
                                             }
-                                            ConvertChart(archive.Charts[0], config, title, difficaltyIndex, null, updateTime, "", output);
+                                            ConvertChart(archive.Charts[0], config, title, difficaltyIndex, null, updateTime, category, output);
 
                                         }
                                         break;
@@ -198,10 +203,13 @@ namespace ConvertHelper
                                             Bemani2DX archive = Bemani2DX.Read(source);
                                             string titleTmp = title;
                                             if (db[title]["TITLE"] != "")
+                                            {
                                                 titleTmp = db[title]["TITLE"];
+                                                category = String.Format("{0:00}", db[title]["CATEGORY"]);
+                                            }
 
                                             float volume = 0.6f;
-                                            maxIndex = ConvertSounds(archive.Sounds, filename, volume, updateTime, null, output, titleTmp, false, "");
+                                            maxIndex = ConvertSounds(archive.Sounds, filename, volume, updateTime, null, output, titleTmp, false, category);
                                         }
                                         break;
                                 }
@@ -279,14 +287,16 @@ namespace ConvertHelper
                 // create RANK metadata
                 bms.Charts[0].Tags["RANK"] = outputRank.ToString();
 
-                // replace prohibited characters
-                name = Common.nameReplace(name);
-                dirPath = Path.Combine(dirPath, version, name);
+                string dirName = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
+                dirPath = Path.Combine(dirPath, version, dirName);
 
                 if (title != null && title.Length > 0)
                 {
                     name += " [" + title + "]";
                 }
+
+                // replace prohibited characters
+                name = Common.nameReplace(name);
 
                 Common.SafeCreateDirectory(dirPath);
                 string output = Path.Combine(dirPath, @"@" + name + ".pms");
@@ -323,15 +333,12 @@ namespace ConvertHelper
 
         static public int ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "")
         {
-            string name;
-            if (nameInfo.Length == 0)
+            string name = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
+            if (name.IndexOf("_pre") >= 0)
             {
-                name = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
+                name = name.Substring(0, name.Length - 4);
             }
-            else
-            {
-                name = Common.nameReplace(nameInfo);
-            }
+
             string targetPath = Path.Combine(outputFolder, version, name);
             Common.SafeCreateDirectory(targetPath);
 

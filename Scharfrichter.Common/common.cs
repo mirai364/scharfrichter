@@ -31,6 +31,7 @@ namespace Scharfrichter.Common
             nameInfo = nameInfo.Replace("\\", "_");
             nameInfo = nameInfo.Replace("\"", "_");
             nameInfo = nameInfo.Replace("*", "_");
+            nameInfo = nameInfo.Replace("|", "_");
 
             Regex reg = new Regex(@"\.\.\.$");
             nameInfo = reg.Replace(nameInfo, "…");

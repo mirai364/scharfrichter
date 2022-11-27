@@ -490,6 +490,50 @@ namespace Scharfrichter.Codec.Archives
                 rendarWavName = "0001-" + chart.Tags["PLAYER"] + chart.Tags["DIFFICULTY"];
             }
 
+
+            // MSS Support
+            // NOTE: Please change it when it is officially supported by bms
+            List<Entry> newList = new List<Entry>();
+            List<Entry> mssList = new List<Entry>();
+            foreach (Entry entry in chart.Entries)
+            {
+                if (entry.IsMss)
+                    mssList.Add(entry);
+                else
+                    newList.Add(entry);
+            }
+            if (mssList.Count > 0)
+            {
+                mssList.Sort();
+                Entry previous = mssList.First();
+                mssList.RemoveAt(0);
+
+                foreach (Entry entry in mssList)
+                {
+                    Fraction linearOffset = entry.LinearOffset - previous.LinearOffset;
+                    if (((double)linearOffset) <= 1)
+                    {
+                        Fraction pak = (entry.LinearOffset / (new Fraction(entry.MetricMeasure, 1) + entry.MetricOffset) / new Fraction(192, 1)) * new Fraction(4, 3);
+                        if (entry.Freeze)
+                            entry.LinearOffset = previous.LinearOffset - pak;
+                        else
+                            previous.LinearOffset = entry.LinearOffset - pak;
+
+                        newList.Add(previous);
+                    }
+                    else
+                    {
+                        newList.Add(previous);
+                    }
+                    previous = entry;
+                }
+                newList.Add(previous);
+
+                chart.Entries = newList;
+                chart.CalculateMetricOffsets();
+            }
+
+
             while (currentMeasure < measureCount)
             {
                 bool write = false;

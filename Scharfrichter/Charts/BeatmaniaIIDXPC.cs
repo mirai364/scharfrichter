@@ -29,6 +29,14 @@ namespace Scharfrichter.Codec.Charts
                 int eventParameter = memReader.ReadByte();
                 int eventValue = memReader.ReadUInt16();
 
+                // MSS Support
+                // NOTE: Please change it when it is officially supported by bms
+                if ((eventType == 0x00 || eventType == 0x01) && eventParameter == 107)
+                {
+                    entry.IsMss = true;
+                    eventParameter = 7;
+                }
+
                 // unhandled parameter types:
                 //  0x05: measure length
                 //  0x08: judgement
@@ -60,6 +68,10 @@ namespace Scharfrichter.Codec.Charts
                     freezeEntry.LinearOffset = entry.LinearOffset + new Fraction(eventValue, 1);
                     freezeEntry.Column = entry.Column;
                     freezeEntry.Value = new Fraction(0, 1);
+                    if (entry.IsMss)
+                    {
+                        freezeEntry.IsMss = true;
+                    }
                     chart.Entries.Add(freezeEntry);
                 }
             }

@@ -355,6 +355,10 @@ namespace Scharfrichter.Codec.Charts
             {
                 return entries;
             }
+            set
+            {
+                entries = value;
+            }
         }
 
         // Measures property
@@ -601,6 +605,7 @@ namespace Scharfrichter.Codec.Charts
         public int Player;
         public EntryType Type;
         public bool Used;
+        public bool IsMss = false;
 
         public int CompareTo(Entry other)
         {

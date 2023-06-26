@@ -408,13 +408,22 @@ namespace Scharfrichter.Codec.Archives
             expansionWriter.WriteLine("#PREVIEW preview.wav");
             if (chart.Tags.ContainsKey("VIDEO") && chart.useMovie)
             {
-                if (chart.isSameFolderMovie)
+                string BGA = chart.Tags["VIDEO"];
+                string[] extensions = { ".wmv", ".mp4" };
+                foreach (string extension in extensions)
                 {
-                    expansionWriter.WriteLine("#BMP01 " + chart.Tags["VIDEO"] + ".wmv");
-                }
-                else
-                {
-                    expansionWriter.WriteLine("#BMP01 ..\\..\\Movie\\" + chart.Tags["VIDEO"] + ".wmv");
+                    string movieFile = chart.movieFolder + BGA + extension;
+                    if (File.Exists(movieFile))
+                    {
+                        if (chart.isSameFolderMovie)
+                        {
+                            expansionWriter.WriteLine("#BMP01 " + BGA + extension);
+                        }
+                        else
+                        {
+                            expansionWriter.WriteLine("#BMP01 ..\\..\\movie\\" + BGA + extension);
+                        }
+                    }
                 }
                 if (chart.Tags.ContainsKey("VIDEODELAY"))
                 {

@@ -17,6 +17,7 @@ namespace Scharfrichter.Codec.Charts
         public int quantizeNotes { get; set; }
         public bool isSameFolderMovie { get; set; }
         public bool useMovie { get; set; }
+        public string movieFolder { get; set; }
 
 
         // Add judgement entries to the list. It's unsure if these are needed, but

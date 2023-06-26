@@ -301,17 +301,22 @@ namespace ConvertHelper
 
                 bms.Charts[0].isSameFolderMovie = isSameFolderMovie;
                 bms.Charts[0].useMovie = useMovie;
+                bms.Charts[0].movieFolder = movieFolder;
                 if (chart.Tags.ContainsKey("VIDEO") && isSameFolderMovie && useMovie)
                 {
                     string BGA = chart.Tags["VIDEO"];
-                    string movieFile = movieFolder + BGA + ".wmv";
-                    if (File.Exists(movieFile))
+                    string[] extensions = { ".wmv", ".mp4" };
+                    foreach (string extension in extensions)
                     {
-                        string copyPath = dirPath + "\\" + BGA + ".wmv";
-                        if (!File.Exists(copyPath))
+                        string movieFile = movieFolder + BGA + extension;
+                        if (File.Exists(movieFile))
                         {
-                            Console.WriteLine(copyPath);
-                            File.Copy(movieFile, copyPath);
+                            string copyPath = dirPath + "\\" + BGA + extension;
+                            if (!File.Exists(copyPath))
+                            {
+                                Console.WriteLine(copyPath);
+                                File.Copy(movieFile, copyPath);
+                            }
                         }
                     }
                 }

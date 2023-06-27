@@ -87,14 +87,7 @@ namespace FirebeatIIIExtract
                         BinaryReader reader = new BinaryReader(fs);
 
                         long totalChunks = (int)((source.Length - DATA_START) / (long)CHUNK_LENGTH);
-                        if (source.Length > CHUNK_LENGTH)
-                        {
-                            if (DATA_START > 0)
-                            {
-                                Util.DiscardBytes(fs, DATA_START);
-                            }
-                        }
-                        else
+                        if (source.Length <= CHUNK_LENGTH)
                         {
                             totalChunks = 1;
                         }

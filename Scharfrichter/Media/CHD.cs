@@ -36,7 +36,6 @@ namespace Scharfrichter.Codec.Media
 
         private struct MapInfo
         {
-            public UInt32 compression;
             public UInt32 crc32;
             public byte flags;
             public UInt64 length;
@@ -48,7 +47,7 @@ namespace Scharfrichter.Codec.Media
 
         private HeaderInfo header;
         private List<MapInfo> map;
-        private CHD parent;
+        private CHD parent = null;
         private BinaryReaderEx reader;
 
         private Func<int, byte[]> ReadHunk;
@@ -295,8 +294,6 @@ namespace Scharfrichter.Codec.Media
                 // decompress the map
                 Huffman huffmanDecoder = new Huffman(16, 8, null, null, null);
                 huffmanDecoder.ImportTreeRLE(reader);
-                byte lastComp = 0;
-                int repCount = 0;
 
                 using (MemoryStream mem = new MemoryStream())
                 {

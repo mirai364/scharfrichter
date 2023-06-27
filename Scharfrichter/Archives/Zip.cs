@@ -34,15 +34,12 @@ namespace Scharfrichter.Codec.Archives
                 case ZipCompressionMethod.Stored:
                     source.Position = zde.Offset;
                     return source;
-                    break;
                 case ZipCompressionMethod.Deflated:
                     source.Position = zde.Offset;
                     return new DeflateStream(source, CompressionMode.Decompress);
-                    break;
                 default:
                     source.Position = zde.Offset;
                     return source;
-                    break;
             }
         }
 

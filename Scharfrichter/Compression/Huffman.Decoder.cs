@@ -30,15 +30,11 @@ namespace Scharfrichter.Codec.Compression
         private UInt16[] lookup;
         private byte maxBits;
         private UInt32 numCodes;
-        private byte prevData;
-        private int rleRemaining;
 
         public Huffman(int newNumCodes, int newMaxBits, UInt16[] newLookup, UInt32[] newHisto, Node[] newNodes)
         {
             numCodes = (UInt32)newNumCodes;
             maxBits = (byte)newMaxBits;
-            prevData = 0;
-            rleRemaining = 0;
             if (newLookup != null)
                 lookup = newLookup;
             else

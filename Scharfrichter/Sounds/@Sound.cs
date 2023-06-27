@@ -194,7 +194,6 @@ namespace Scharfrichter.Codec.Sounds
                     RawSourceWaveStream wavStream = new RawSourceWaveStream(dataStream, Format);
 
                     byte[] buffer;
-                    int bytesRead;
 
                     using (MediaFoundationResampler resampler = new MediaFoundationResampler(wavStream, newFormat))
                     {

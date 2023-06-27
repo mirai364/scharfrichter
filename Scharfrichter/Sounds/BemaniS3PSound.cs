@@ -10,11 +10,11 @@ namespace Scharfrichter.Codec.Sounds
         static public Sound Read(byte[] source)
         {
             Sound result = new Sound();
-            string fileName = "tmp.wma";
+            var tempFilePath = Path.GetTempFileName();
 
-            File.WriteAllBytes(fileName, source);
-            WMAFileReader fileReader = new WMAFileReader(fileName);
-            File.Delete(fileName);
+            File.WriteAllBytes(tempFilePath, source);
+            WMAFileReader fileReader = new WMAFileReader(tempFilePath);
+            File.Delete(tempFilePath);
             using (WaveStream wavStream = WaveFormatConversionStream.CreatePcmStream(fileReader))
             {
                 int bytesToRead;

@@ -199,3 +199,7 @@ FakesAssemblies/
 [Oo]utput/*.exe
 [Oo]utput/*.pdb
 [Oo]utput/*.dll
+[Oo]utput/*.config
+[Oo]utput/*.xml
+[Oo]utput/*.xml
+[Oo]utput/[Rr]elease/*

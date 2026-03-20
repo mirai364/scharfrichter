@@ -2,6 +2,7 @@
 using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.IO;
+using Image = SixLabors.ImageSharp.Image;
 
 namespace DDSReader
 {

@@ -1,0 +1,8 @@
+<Project>
+  <!-- Centralize OutputPath so Debug/Release outputs match original layout -->
+  <PropertyGroup>
+    <!-- Debug -> Output, Release -> Output\Release -->
+    <OutputPath Condition=" '$(Configuration)' == 'Debug' ">..\Output\</OutputPath>
+    <OutputPath Condition=" '$(Configuration)' == 'Release' ">..\Output\Release\</OutputPath>
+  </PropertyGroup>
+</Project>

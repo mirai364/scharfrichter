@@ -1,151 +1,35 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>8.0.30703</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{DB34F6AF-C522-4149-A6D3-37A36D2D9590}</ProjectGuid>
+    <TargetFramework>net48</TargetFramework>
     <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Scharfrichter.Codec</RootNamespace>
-    <AssemblyName>Scharfrichter.Codec</AssemblyName>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
     <OutputPath>..\Output\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
     <OutputPath>..\Output\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
-  <PropertyGroup>
-    <ApplicationIcon>
-    </ApplicationIcon>
-  </PropertyGroup>
+  <PropertyGroup />
   <ItemGroup>
-    <Reference Include="NAudio, Version=1.10.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\NAudio.1.10.0\lib\net35\NAudio.dll</HintPath>
-    </Reference>
-    <Reference Include="NAudio.WindowsMediaFormat, Version=1.0.1.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\NAudio.Wma.1.0.1\lib\net35\NAudio.WindowsMediaFormat.dll</HintPath>
-    </Reference>
-    <Reference Include="NReco.VideoConverter, Version=1.2.1.0, Culture=neutral, PublicKeyToken=395ccb334978a0cd, processorArchitecture=MSIL">
-      <HintPath>..\packages\NReco.VideoConverter.1.2.1\lib\net45\NReco.VideoConverter.dll</HintPath>
-    </Reference>
-    <Reference Include="OggVorbisEncoder, Version=1.2.2.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\OggVorbisEncoder.1.2.2\lib\net461\OggVorbisEncoder.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Memory, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Memory.4.6.3\lib\net462\System.Memory.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Numerics" />
-    <Reference Include="System.Numerics.Vectors, Version=4.1.6.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Numerics.Vectors.4.6.1\lib\net462\System.Numerics.Vectors.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.3.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Runtime.CompilerServices.Unsafe.6.1.2\lib\net462\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
-    </Reference>
     <Reference Include="System.Web" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Archives\%40Archive.cs" />
-    <Compile Include="Archives\SUS.cs" />
-    <Compile Include="Archives\ChuniC2S.cs" />
-    <Compile Include="Archives\Popn.cs" />
-    <Compile Include="Archives\Bemani1.cs" />
-    <Compile Include="Archives\BemaniS3P.cs" />
-    <Compile Include="Archives\Bemani2DX.cs" />
-    <Compile Include="Archives\BemaniIFS.cs" />
-    <Compile Include="Archives\BemaniSSP.cs" />
-    <Compile Include="Archives\BemaniSSQ.cs" />
-    <Compile Include="Archives\BMS.cs" />
-    <Compile Include="Archives\AdpcmWaveFormat.cs" />
-    <Compile Include="Archives\DJMain.cs" />
-    <Compile Include="Archives\Firebeat.cs" />
-    <Compile Include="Archives\Gzip.cs" />
-    <Compile Include="Archives\MicrosoftXWB.cs" />
-    <Compile Include="Archives\StepmaniaSM.cs" />
-    <Compile Include="Archives\Twinkle.cs" />
-    <Compile Include="Archives\Zip.cs" />
-    <Compile Include="Charts\%40ChartChuni.cs" />
-    <Compile Include="Charts\Beatmania7Key.cs" />
-    <Compile Include="Charts\ChuniPC.cs" />
-    <Compile Include="Charts\PopnPC.cs" />
-    <Compile Include="Charts\BeatmaniaIII.cs" />
-    <Compile Include="Encryption\BemaniPCEout.cs" />
-    <Compile Include="Sounds\BemaniS3PSound.cs" />
-    <Compile Include="Sounds\Encoders\FlacEncoder.cs" />
-    <Compile Include="Sounds\Encoders\ISoundEncoder.cs" />
-    <Compile Include="Sounds\Encoders\OggEncoder.cs" />
-    <Compile Include="Sounds\Encoders\WavEncoder.cs" />
-    <Compile Include="Sounds\RF5C400.cs" />
-    <Compile Include="Sounds\YMZ280B.cs" />
-    <Compile Include="XACT3\Xact3WaveBank.cs" />
-    <Compile Include="BinaryIO.cs" />
-    <Compile Include="Charts\%40Chart.cs" />
-    <Compile Include="Charts\Beatmania5Key.cs" />
-    <Compile Include="Charts\BeatmaniaIIDXCSNew.cs" />
-    <Compile Include="Charts\BeatmaniaIIDXCSOld.cs" />
-    <Compile Include="Charts\BeatmaniaIIDXPC.cs" />
-    <Compile Include="Compression\BemaniLZ.cs" />
-    <Compile Include="Compression\BemaniLZSS.cs" />
-    <Compile Include="Compression\BemaniLZSS2.cs" />
-    <Compile Include="Compression\Huffman.Decoder.cs" />
-    <Compile Include="Compression\IFSImage.cs" />
-    <Compile Include="Encryption\BemaniPCAudio.cs" />
-    <Compile Include="Fraction.cs" />
-    <Compile Include="Graphics\%40Graphic.cs" />
-    <Compile Include="Heuristics\Bemani1.cs" />
-    <Compile Include="Heuristics\Bemani2DXArchive.cs" />
-    <Compile Include="Heuristics\BemaniImage2DXAC.cs" />
-    <Compile Include="Heuristics\BemaniModel2DXAC.cs" />
-    <Compile Include="Media\CHD.Codec.cs" />
-    <Compile Include="Media\CHD.cs" />
-    <Compile Include="Media\CHD.Stream.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Sounds\%40Sound.cs" />
-    <Compile Include="Sounds\Bemani2DXSound.cs" />
-    <Compile Include="Sounds\BemaniSD9.cs" />
-    <Compile Include="Sounds\K054539.cs" />
-    <Compile Include="Sounds\Render.cs" />
-    <Compile Include="Subfolder.cs" />
-    <Compile Include="Util.cs" />
-    <Compile Include="Videos\%40Video.cs" />
   </ItemGroup>
+  <!-- Explicit Compile items removed to avoid duplication with SDK implicit includes.
+       The SDK implicitly includes all .cs files in the project directory. If you need
+       explicit control over included files, set <EnableDefaultCompileItems>false/> and
+       re-add explicit <Compile> entries. -->
   <ItemGroup>
-    <None Include="app.config" />
-    <None Include="packages.config" />
+    <PackageReference Include="NAudio" Version="1.10.0" />
+    <PackageReference Include="NAudio.Wma" Version="1.0.1" />
+    <PackageReference Include="NReco.VideoConverter" Version="1.2.1" />
+    <PackageReference Include="OggVorbisEncoder" Version="1.2.2" />
+    <PackageReference Include="System.Buffers" Version="4.6.1" />
+    <PackageReference Include="System.Memory" Version="4.6.3" />
+    <PackageReference Include="System.Numerics.Vectors" Version="4.6.1" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
   </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
 </Project>

@@ -76,13 +76,13 @@ namespace Scharfrichter.Codec.Archives
                     Console.WriteLine("WARNING: More than 1293 samples");
                     return false;
                 }
-                chart.Tags["WAV" + Util.ConvertToBMEString(pair.Value + 1, 2)] = targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".wav";
-                //Console.WriteLine("WAV" + Util.ConvertToBMEString(pair.Value + 1, 2) + " " + targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".wav");
+                chart.Tags["WAV" + Util.ConvertToBMEString(pair.Value + 1, 2)] = targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".ogg";
+                //Console.WriteLine("WAV" + Util.ConvertToBMEString(pair.Value + 1, 2) + " " + targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".ogg");
             }
 
             if (rendarWavName.Length > 0)
             {
-                chart.Tags["WAV01"] = targetFolder + rendarWavName + ".wav";
+                chart.Tags["WAV01"] = targetFolder + rendarWavName + ".ogg";
             }
             return true;
         }
@@ -197,7 +197,7 @@ namespace Scharfrichter.Codec.Archives
                             case "49": currentPlayer = 2; currentType = EntryType.Sample; currentColumn = 7; break;
                             default: chart.Tags[tag.Key + ":" + tag.Value] = ""; continue; // a little hack to preserve unknown lines
                         }
-                        
+
                         // determine the alphabet used to decode this line
                         string alphabet;
                         int alphabetLength;
@@ -405,7 +405,7 @@ namespace Scharfrichter.Codec.Archives
             expansionWriter.WriteLine("");
             expansionWriter.WriteLine("");
             expansionWriter.WriteLine("*---------------------- EXPANSION FIELD");
-            expansionWriter.WriteLine("#PREVIEW preview.wav");
+            expansionWriter.WriteLine("#PREVIEW preview.ogg");
             if (chart.Tags.ContainsKey("VIDEO") && chart.useMovie)
             {
                 string BGA = chart.Tags["VIDEO"];
@@ -840,7 +840,7 @@ namespace Scharfrichter.Codec.Archives
                 {
                     if (tag.Key == "VIDEO" || tag.Key == "VIDEODELAY" || tag.Key == "KEYSET" || tag.Key == "ISUSERENDERAUTOTIP")
                         continue;
-                    if (commonBellPath != "" && tag.Value.Contains("0000.wav"))
+                    if (commonBellPath != "" && tag.Value.Contains("0000.ogg"))
                     {
                         headerWriter.WriteLine("#" + tag.Key + " " + commonBellPath);
                         continue;
@@ -871,7 +871,7 @@ namespace Scharfrichter.Codec.Archives
                     expansionWriter.WriteLine(line);
                 }
             }
-            
+
             // finalize data and dump to stream
             headerWriter.Flush();
             expansionWriter.Flush();

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
+﻿using System.IO;
 
 namespace Scharfrichter.Codec.Charts
 {
@@ -121,7 +117,7 @@ namespace Scharfrichter.Codec.Charts
                             entry.Value = new Fraction(eventValue, 1);
                             break;
                         case 0xC: // measure
-                            entry.Type = EntryType.Measure; entry.Player = entry.Parameter + 1; 
+                            entry.Type = EntryType.Measure; entry.Player = entry.Parameter + 1;
                             break;
                         case 0xE: // judgement
                             entry.Type = EntryType.Judgement;

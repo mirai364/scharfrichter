@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace Scharfrichter.Codec.Heuristics
+﻿namespace Scharfrichter.Codec.Heuristics
 {
     static public partial class Heuristics
     {

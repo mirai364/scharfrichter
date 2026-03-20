@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Charts
 {
@@ -75,7 +73,7 @@ namespace Scharfrichter.Codec.Charts
                     chart.Entries.Add(freezeEntry);
                 }
             }
-            
+
             // sort entries
             chart.Entries.Sort();
 

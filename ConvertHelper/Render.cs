@@ -7,8 +7,6 @@ using Scharfrichter.Common;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace ConvertHelper
 {
@@ -171,7 +169,15 @@ namespace ConvertHelper
                         }
                     }
 
-                    byte[] data = ChartRenderer.Render(chart, tmpSound);
+                    byte[] data = null;
+                    if (idUseRenderAutoTip)
+                    {
+                        data = ChartRenderer.RenderAsFormat(chart, tmpSound, "ogg");
+                    }
+                    else
+                    {
+                        data = ChartRenderer.RenderAsFormat(chart, tmpSound, "wav");
+                    }
 
                     int renderedCount = rendered.Count;
                     int matchIndex = -1;
@@ -214,7 +220,7 @@ namespace ConvertHelper
                         {
                             Console.WriteLine("Writing unique " + (k < 6 ? 1 : 3) + config["IIDX"].GetValue("DIFFICULTY" + k.ToString()));
                             Common.SafeCreateDirectory(targetPath);
-                            File.WriteAllBytes(targetPath + "\\" + outFile + "-" + (k < 6 ? 1 : 3) + config["IIDX"].GetValue("DIFFICULTY" + k.ToString()) + ".wav", data);
+                            File.WriteAllBytes(targetPath + "\\" + outFile + "-" + (k < 6 ? 1 : 3) + config["IIDX"].GetValue("DIFFICULTY" + k.ToString()) + ".ogg", data);
                         }
                         else
                         {

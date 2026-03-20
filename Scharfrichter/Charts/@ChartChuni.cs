@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Charts
 {
@@ -123,7 +121,7 @@ namespace Scharfrichter.Codec.Charts
             int measure = -1;
             Fraction measureRate = new Fraction(0, 1);
             Fraction rate = new Fraction(0, 1);
-            
+
             // BPM into seconds per measure
             measureRate = Util.CalculateMeasureRate(bpm);
 
@@ -463,7 +461,7 @@ namespace Scharfrichter.Codec.Charts
 
             DefaultBPM *= ratio;
 #endif
-            
+
 #if (false) // disabled for now because it is a little buggy and we need to get a release out
             // regenerate linear offsets because the values could have changed
             CalculateLinearOffsets();

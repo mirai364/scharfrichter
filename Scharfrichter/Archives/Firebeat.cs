@@ -1,11 +1,7 @@
 ﻿using Scharfrichter.Codec.Charts;
 using Scharfrichter.Codec.Sounds;
-
-using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Archives
 {

@@ -1,6 +1,4 @@
-﻿using Scharfrichter.Common;
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,23 +11,23 @@ namespace S3PConverter
         public int memStart { get; set; }
         public int memLength { get; set; }
 
-        public int getMemEnd ()
+        public int getMemEnd()
         {
             return memStart + memLength;
         }
 
-        public void memEcho ()
+        public void memEcho()
         {
             Console.WriteLine("s3v mem " + memStart + " to " + getMemEnd());
         }
 
-        public void getMemData (int index, BinaryReader reader)
+        public void getMemData(int index, BinaryReader reader)
         {
             reader.BaseStream.Position = memStart;
             byte[] extension = reader.ReadBytes(4);
             int start = reader.ReadInt32();
             reader.BaseStream.Position = memStart + start;
-            byte[] readData  = reader.ReadBytes(memLength - start);
+            byte[] readData = reader.ReadBytes(memLength - start);
             File.WriteAllBytes("result\\" + ConvertToAlphabetString(index, 4, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") + @".wma", readData.ToArray());
         }
 
@@ -97,7 +95,7 @@ namespace S3PConverter
                     return;
                 }
                 int count = reader.ReadInt32();
-                for (int i = 0; i< count; i++)
+                for (int i = 0; i < count; i++)
                 {
                     s3vData s3vdata = new s3vData();
                     s3vdata.memStart = reader.ReadInt32();
@@ -109,7 +107,7 @@ namespace S3PConverter
                 for (int i = 0; i < count; i++)
                 {
                     s3vList[i].memEcho();
-                    s3vList[i].getMemData(i+1, reader);
+                    s3vList[i].getMemData(i + 1, reader);
                 }
             }
         }

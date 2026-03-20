@@ -1,8 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Compression
 {
@@ -11,7 +8,7 @@ namespace Scharfrichter.Codec.Compression
     // more information:
     // https://github.com/mamedev/mame/blob/master/src/lib/util/huffman.c
     // https://github.com/mamedev/mame/blob/master/src/lib/util/huffman.h
-    
+
     public class Huffman
     {
         public class Node
@@ -119,7 +116,7 @@ namespace Scharfrichter.Codec.Compression
 
             // loop until we read all the nodes
             int curNode;
-            for (curNode = 0; curNode < numCodes; )
+            for (curNode = 0; curNode < numCodes;)
             {
                 // a non-one value is just raw
                 byte nodeBits = (byte)reader.ReadBits(numBits);

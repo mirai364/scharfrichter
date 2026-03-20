@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
+﻿using System.IO;
 
 namespace Scharfrichter.Codec.XACT3
 {
@@ -43,7 +39,7 @@ namespace Scharfrichter.Codec.XACT3
         public const int MaxWmaAvgBytesPerSecEntries = 7;
         public const int MaxWmaBlockAlignEntries = 17;
 
-        static public short[] AdpcmCoefficients = 
+        static public short[] AdpcmCoefficients =
         {
             256, 0,
             512, -256,
@@ -182,7 +178,7 @@ namespace Scharfrichter.Codec.XACT3
 
         public int BitsPerSample
         {
-                
+
             get
             {
                 if (wFormatTag == Constants.WavebankminiformatTagXma)

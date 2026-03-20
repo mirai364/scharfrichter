@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
 using System.Text;
 
 namespace Scharfrichter.Codec.Archives
@@ -28,7 +27,7 @@ namespace Scharfrichter.Codec.Archives
         public Stream StreamFile(ZipDirectoryEntry zde)
         {
             var reader = new BinaryReader(source);
-            
+
             switch (zde.Compression)
             {
                 case ZipCompressionMethod.Stored:

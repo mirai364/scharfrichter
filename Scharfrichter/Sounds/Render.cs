@@ -1,14 +1,11 @@
-﻿using NAudio;
+﻿using NAudio.Utils;
 using NAudio.Wave;
-using NAudio.Utils;
-
+using NReco.VideoConverter; // For FLAC
+using OggVorbisEncoder;     // For OGG
 using Scharfrichter.Codec.Charts;
-
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Sounds
 {
@@ -62,7 +59,10 @@ namespace Scharfrichter.Codec.Sounds
             }
         }
 
-        static public byte[] Render(Chart chart, Sound[] sounds)
+        /// <summary>
+        /// Renders the waveform and returns pure interleaved PCM samples along with format information.
+        /// </summary>
+        static private (Int16[] samples, WaveFormat format) RenderRawSamples(Chart chart, Sound[] sounds)
         {
             Dictionary<long, Entry> lastNote = new Dictionary<long, Entry>();
             Dictionary<int, Fraction> noteCutoff = new Dictionary<int, Fraction>();
@@ -141,14 +141,138 @@ namespace Scharfrichter.Codec.Sounds
                 outputSamples[i] = (Int16)(buffer[i] / normalization);
             }
 
+            return (outputSamples, newFormat);
+        }
+
+        /// <summary>
+        /// Performs commonized encoding to the specified format ("wav", "flac", "ogg").
+        /// </summary>
+        static public byte[] RenderAsFormat(Chart chart, Sound[] sounds, string format)
+        {
+            // 1. Retrieve the rendered raw PCM data
+            var result = RenderRawSamples(chart, sounds);
+            Int16[] samples = result.samples;
+            WaveFormat waveFormat = result.format;
+
+            string targetFormat = format.ToLowerInvariant();
+
+            // 2. For OGG, pass the pure PCM directly to OggVorbisEncoder
+            if (targetFormat == "ogg")
+            {
+                return EncodeToOgg(samples, waveFormat);
+            }
+
+            // For WAV and FLAC, use NAudio to generate a standard WAV (with RIFF header) byte array
+            byte[] wavData = null;
             using (MemoryStream mem = new MemoryStream())
             {
-                using (WaveFileWriter writer = new WaveFileWriter(new IgnoreDisposeStream(mem), newFormat))
+                using (WaveFileWriter writer = new WaveFileWriter(new IgnoreDisposeStream(mem), waveFormat))
                 {
-                    writer.WriteSamples(outputSamples, 0, length);
+                    writer.WriteSamples(samples, 0, samples.Length);
                 }
                 mem.Flush();
-                return mem.ToArray();
+                wavData = mem.ToArray();
+            }
+
+            if (targetFormat == "wav" || targetFormat == "wave")
+            {
+                return wavData;
+            }
+
+            // 3. For FLAC, pass the WAV data to NReco.VideoConverter (FFmpeg) for encoding
+            if (targetFormat == "flac")
+            {
+                var ffmpeg = new FFMpegConverter();
+                using (MemoryStream inputStream = new MemoryStream(wavData))
+                using (MemoryStream outputStream = new MemoryStream())
+                {
+                    // FIX: Use ConvertLiveMedia for Stream to Stream conversions
+                    ffmpeg.ConvertLiveMedia(inputStream, "wav", outputStream, "flac", new ConvertSettings());
+                    return outputStream.ToArray();
+                }
+            }
+
+            throw new NotSupportedException($"Format {format} is not supported.");
+        }
+
+        /// <summary>
+        /// Encodes pure PCM data to OGG Vorbis using OggVorbisEncoder.
+        /// </summary>
+        static private byte[] EncodeToOgg(Int16[] pcmSamples, WaveFormat format)
+        {
+            int numChannels = format.Channels;
+            int numFrames = pcmSamples.Length / numChannels;
+
+            // OggVorbisEncoder requires independent float arrays for each channel
+            float[][] floatSamples = new float[numChannels][];
+            for (int c = 0; c < numChannels; c++)
+            {
+                floatSamples[c] = new float[numFrames];
+            }
+
+            // De-interleave and normalize from 16-bit integer to [-1.0f, 1.0f]
+            for (int i = 0; i < numFrames; i++)
+            {
+                for (int c = 0; c < numChannels; c++)
+                {
+                    floatSamples[c][i] = pcmSamples[i * numChannels + c] / 32768f;
+                }
+            }
+
+            // Initialize with VBR quality 0.8f (high quality setting, approx 256kbps)
+            var info = VorbisInfo.InitVariableBitRate(numChannels, format.SampleRate, 0.8f);
+            var serialNo = new Random().Next();
+            var oggStream = new OggStream(serialNo);
+
+            var comments = new Comments();
+            comments.AddTag("ENCODER", "Scharfrichter");
+
+            // FIX: HeaderPacketBuilder is a static class in recent versions.
+            // Call the static methods directly instead of creating an instance.
+            oggStream.PacketIn(HeaderPacketBuilder.BuildInfoPacket(info));
+            oggStream.PacketIn(HeaderPacketBuilder.BuildCommentsPacket(comments));
+            oggStream.PacketIn(HeaderPacketBuilder.BuildBooksPacket(info));
+
+            using (var outputStream = new MemoryStream())
+            {
+                FlushPages(oggStream, outputStream, false);
+
+                var processingState = ProcessingState.Create(info);
+                int writeBufferSize = 1024;
+
+                for (int readIndex = 0; readIndex < numFrames; readIndex += writeBufferSize)
+                {
+                    int count = Math.Min(writeBufferSize, numFrames - readIndex);
+                    processingState.WriteData(floatSamples, count, readIndex);
+
+                    while (!oggStream.Finished && processingState.PacketOut(out OggPacket packet))
+                    {
+                        oggStream.PacketIn(packet);
+                        FlushPages(oggStream, outputStream, false);
+                    }
+                }
+
+                // End of stream processing
+                processingState.WriteEndOfStream();
+
+                while (!oggStream.Finished && processingState.PacketOut(out OggPacket packet))
+                {
+                    oggStream.PacketIn(packet);
+                    FlushPages(oggStream, outputStream, false);
+                }
+
+                FlushPages(oggStream, outputStream, true);
+
+                return outputStream.ToArray();
+            }
+        }
+
+        static private void FlushPages(OggStream stream, MemoryStream output, bool force)
+        {
+            while (stream.PageOut(out OggPage page, force))
+            {
+                output.Write(page.Header, 0, page.Header.Length);
+                output.Write(page.Body, 0, page.Body.Length);
             }
         }
     }

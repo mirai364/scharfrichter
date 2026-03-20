@@ -1,17 +1,9 @@
-﻿using ConvertHelper;
-
-using Scharfrichter.Codec;
+﻿using Scharfrichter.Codec;
 using Scharfrichter.Codec.Archives;
-using Scharfrichter.Codec.Charts;
-using Scharfrichter.Codec.Media;
-using Scharfrichter.Codec.Sounds;
 using Scharfrichter.Common;
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace FirebeatIIIExtract
 {

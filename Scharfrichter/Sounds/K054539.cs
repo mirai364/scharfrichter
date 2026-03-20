@@ -1,11 +1,7 @@
-﻿using NAudio;
-using NAudio.Wave;
+﻿using NAudio.Wave;
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Sounds
 {
@@ -241,18 +237,18 @@ namespace Scharfrichter.Codec.Sounds
             // 16-bit stereo format
             result.Format = WaveFormat.CreateCustomFormat(WaveFormatEncoding.Pcm, sampleRate, 2, sampleRate * 4, 4, 16);
             result.Data = data;
-            
+
             // determine volume
             result.Volume = VolumeTable[prop.Volume];
-            
+
             // determine panning
             int panValue = prop.Panning & 0xF;
-            if (panValue < 1) 
+            if (panValue < 1)
                 panValue = 8;
-            if (panValue > 15) 
+            if (panValue > 15)
                 panValue = 8;
             result.Panning = (float)(panValue - 1) / 14f;
-            
+
             // flip stereo
             result.Panning = 1.0f - result.Panning;
 

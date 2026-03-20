@@ -1,11 +1,4 @@
-﻿using ConvertHelper;
-
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
-
-namespace BemaniToBMS
+﻿namespace BemaniToBMS
 {
     class Program
     {

@@ -5,68 +5,68 @@ using System.IO;
 
 namespace DDSReader
 {
-	public class DDSImage
-	{
-		private readonly Pfim.IImage _image;
+    public class DDSImage
+    {
+        private readonly Pfim.IImage _image;
 
-		public byte[] Data
-		{
-			get
-			{
-				if (_image != null)
-					return _image.Data;
-				else
-					return new byte[0];
-			}
-		}
+        public byte[] Data
+        {
+            get
+            {
+                if (_image != null)
+                    return _image.Data;
+                else
+                    return new byte[0];
+            }
+        }
 
-		public DDSImage(string file)
-		{
-			_image = Pfim.Pfim.FromFile(file);
-			Process();
-		}
+        public DDSImage(string file)
+        {
+            _image = Pfim.Pfimage.FromFile(file);
+            Process();
+        }
 
-		public DDSImage(Stream stream)
-		{
-			if (stream == null)
-				throw new Exception("DDSImage ctor: Stream is null");
+        public DDSImage(Stream stream)
+        {
+            if (stream == null)
+                throw new Exception("DDSImage ctor: Stream is null");
 
-			_image = Pfim.Dds.Create(stream, new Pfim.PfimConfig());
-			Process();
-		}
+            _image = Pfim.Dds.Create(stream, new Pfim.PfimConfig());
+            Process();
+        }
 
-		public DDSImage(byte[] data)
-		{
-			if (data == null || data.Length <= 0)
-				throw new Exception("DDSImage ctor: no data");
+        public DDSImage(byte[] data)
+        {
+            if (data == null || data.Length <= 0)
+                throw new Exception("DDSImage ctor: no data");
 
-			_image = Pfim.Dds.Create(data, new Pfim.PfimConfig());
-			Process();
-		}
+            _image = Pfim.Dds.Create(data, new Pfim.PfimConfig());
+            Process();
+        }
 
-		public void Save(string file)
-		{
-			if (_image.Format == Pfim.ImageFormat.Rgba32)
-			{
-				var image = Image.LoadPixelData<Bgra32>(_image.Data, _image.Width, _image.Height);
-				image.Save(file);
-			}
-			else if (_image.Format == Pfim.ImageFormat.Rgb24)
-			{
-				var image = Image.LoadPixelData<Rgb24>(_image.Data, _image.Width, _image.Height);
-				image.Save(file);
-			}
-			else
-				throw new Exception("Unsupported pixel format (" + _image.Format + ")");
-		}
+        public void Save(string file)
+        {
+            if (_image.Format == Pfim.ImageFormat.Rgba32)
+            {
+                var image = Image.LoadPixelData<Bgra32>(_image.Data, _image.Width, _image.Height);
+                image.Save(file);
+            }
+            else if (_image.Format == Pfim.ImageFormat.Rgb24)
+            {
+                var image = Image.LoadPixelData<Rgb24>(_image.Data, _image.Width, _image.Height);
+                image.Save(file);
+            }
+            else
+                throw new Exception("Unsupported pixel format (" + _image.Format + ")");
+        }
 
-		private void Process()
-		{
-			if (_image == null)
-				throw new Exception("DDSImage image creation failed");
+        private void Process()
+        {
+            if (_image == null)
+                throw new Exception("DDSImage image creation failed");
 
-			if (_image.Compressed)
-				_image.Decompress();
-		}
-	}
+            if (_image.Compressed)
+                _image.Decompress();
+        }
+    }
 }

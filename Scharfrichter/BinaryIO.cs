@@ -1,8 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec
 {
@@ -314,7 +311,7 @@ namespace Scharfrichter.Codec
         public void WriteS(Int16 value)
         {
             Write((byte)((value >> 8) & 0xFF));
-            Write((byte)((value ) & 0xFF));
+            Write((byte)((value) & 0xFF));
         }
 
         public void WriteS(Int32 value)

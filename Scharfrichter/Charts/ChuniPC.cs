@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Charts
 {
@@ -75,7 +74,7 @@ namespace Scharfrichter.Codec.Charts
                     case "BPM":
                         entry.Type = EntryTypeChuni.Tempo;
                         entry.LinearOffset = new Fraction(currentMeasure * resolution + measurePosition, 1);
-                        entry.Value = new Fraction((int)(double.Parse(parts[3])*1000), 1000);
+                        entry.Value = new Fraction((int)(double.Parse(parts[3]) * 1000), 1000);
                         chart.Entries.Add(entry);
                         break;
                     case "TAP":
@@ -121,13 +120,15 @@ namespace Scharfrichter.Codec.Charts
                             if (list.Count <= 0)
                             {
                                 holdDic.Remove(tmp);
-                            } else
+                            }
+                            else
                             {
                                 holdDic[tmp] = list;
                             }
                             currentIdentifierTmp = entry.Identifier;
                             holdResetPoint.currentIdentifier--;
-                        } else
+                        }
+                        else
                         {
                             entry.Type = EntryTypeChuni.Marker;
                             entry.Player = 2;
@@ -147,7 +148,7 @@ namespace Scharfrichter.Codec.Charts
                         freezeEntry.Identifier = currentIdentifierTmp;
                         freezeEntry.Value = new Fraction(20 + notesWidth, 1);
                         chart.Entries.Add(freezeEntry);
-                        tmp = new Point() { linearOffset = endLinearOffset, position = notesPosition};
+                        tmp = new Point() { linearOffset = endLinearOffset, position = notesPosition };
                         if (holdDic.ContainsKey(tmp))
                         {
                             var list = holdDic[tmp];
@@ -156,7 +157,7 @@ namespace Scharfrichter.Codec.Charts
                         }
                         else
                         {
-                            var list =new List<int> { chart.Entries.Count() - 1 };
+                            var list = new List<int> { chart.Entries.Count() - 1 };
                             holdDic[tmp] = list;
                         }
                         break;
@@ -348,7 +349,8 @@ namespace Scharfrichter.Codec.Charts
                         if (parts.Count() > 7)
                         {
                             freezeEntry.Value = new Fraction(40 + int.Parse(parts[7]), 1);
-                        } else
+                        }
+                        else
                         {
                             freezeEntry.Value = new Fraction(40 + notesWidth, 1);
                         }
@@ -451,10 +453,11 @@ namespace Scharfrichter.Codec.Charts
                         if (measurePosition == 0)
                         {
                             chart.Tags["TIL00"] = TIL00 + currentMeasure + "'0:" + double.Parse(parts[4]) + ", ";
-                        } else
+                        }
+                        else
                         {
                             int calc = (int)((480.0 * 4) * ((double)measurePosition / (double)resolution));
-                            chart.Tags["TIL00"] = TIL00 + currentMeasure + "'" + calc.ToString() + ":" +double.Parse(parts[4]) + ", ";
+                            chart.Tags["TIL00"] = TIL00 + currentMeasure + "'" + calc.ToString() + ":" + double.Parse(parts[4]) + ", ";
                         }
 
                         int nextMeasure = (int)Math.Floor(((double)currentMeasure * (double)resolution + (double)measurePosition + (double)notesPosition) / (double)resolution);
@@ -476,7 +479,7 @@ namespace Scharfrichter.Codec.Charts
                 }
             }
 
-            for (int i=0; i <= currentMeasure + 3; i++)
+            for (int i = 0; i <= currentMeasure + 3; i++)
             {
                 EntryChuni entry = new EntryChuni();
                 int eventOffset = i * resolution;

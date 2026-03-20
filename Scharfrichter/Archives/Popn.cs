@@ -1,14 +1,9 @@
 ﻿using Scharfrichter.Codec.Charts;
-
-using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Archives
 {
-    public class Popn: Archive
+    public class Popn : Archive
     {
         private Chart[] charts = new Chart[1];
 

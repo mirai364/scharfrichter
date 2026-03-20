@@ -203,3 +203,5 @@ FakesAssemblies/
 [Oo]utput/*.xml
 [Oo]utput/*.xml
 [Oo]utput/[Rr]elease/*
+Output
+.github

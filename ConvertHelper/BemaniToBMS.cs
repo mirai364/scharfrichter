@@ -2,13 +2,13 @@
 using Scharfrichter.Codec.Archives;
 using Scharfrichter.Codec.Charts;
 using Scharfrichter.Codec.Sounds;
+using Scharfrichter.Codec.Sounds.Encoders;
 using Scharfrichter.Common;
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace ConvertHelper
 {
@@ -54,6 +54,7 @@ namespace ConvertHelper
             }
 
             string output = config["BMS"]["Output"];
+            ISoundEncoder encoder;
 
             // process files
             for (int i = 0; i < args.Length; i++)
@@ -188,7 +189,8 @@ namespace ConvertHelper
                                     Sound sound = BemaniSD9.Read(source);
                                     string targetFile = Path.GetFileNameWithoutExtension(filename);
                                     string targetPath = Path.Combine(Path.GetDirectoryName(filename), targetFile) + ".wav";
-                                    sound.WriteFile(targetPath, 1.0f);
+                                    encoder = new WavEncoder();
+                                    encoder.EncodeToFile(sound, targetPath, 1.0f);
                                 }
                                 break;
                             case @".SSP":
@@ -366,10 +368,12 @@ namespace ConvertHelper
             string targetPath = Path.Combine(outputFolder, version, name);
             Common.SafeCreateDirectory(targetPath);
 
+            ISoundEncoder encoder;
             if (isPre2DX)
             {
-                string output = Path.Combine(targetPath, @"preview" + @".wav");
-                sounds[0].WriteFile(output, volume);
+                string output = Path.Combine(targetPath, @"preview" + @".ogg");
+                encoder = new OggEncoder();
+                encoder.EncodeToFile(sounds[0], output, volume);
                 // Rewrite date/time based on file date/time
                 File.SetCreationTime(output, updateTime);
                 File.SetLastWriteTime(output, updateTime);
@@ -388,8 +392,9 @@ namespace ConvertHelper
                 for (int j = 0; j < count; j++)
                 {
                     int sampleIndex = j + 1;
-                    string output = Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".wav");
-                    sounds[j].WriteFile(output, volume);
+                    string output = Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".ogg");
+                    encoder = new OggEncoder();
+                    encoder.EncodeToFile(sounds[j], output, volume);
                     // Rewrite date/time based on file date/time
                     File.SetCreationTime(output, updateTime);
                     File.SetLastWriteTime(output, updateTime);

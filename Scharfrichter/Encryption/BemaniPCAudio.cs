@@ -1,8 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Encryption
 {
@@ -20,7 +17,7 @@ namespace Scharfrichter.Codec.Encryption
         {
             0x97, 0x1E, 0x24, 0xA0, 0x9A, 0x00, 0x10, 0x2B,
             0x91, 0xEF, 0xD7, 0x7A, 0xCD, 0x11, 0xAF, 0xAF,
-            0x8D, 0x26, 0x5D, 0xBB, 0xE0, 0xC6, 0x1B, 0x2B                
+            0x8D, 0x26, 0x5D, 0xBB, 0xE0, 0xC6, 0x1B, 0x2B
         };
 
         static public byte[] IIDX10 = new byte[]
@@ -52,7 +49,7 @@ namespace Scharfrichter.Codec.Encryption
             BinaryReader reader = new BinaryReader(source);
             BinaryWriter writer = new BinaryWriter(target);
 
-            byte[] lastBlock = {0, 0, 0, 0, 0, 0, 0, 0 };
+            byte[] lastBlock = { 0, 0, 0, 0, 0, 0, 0, 0 };
             byte[] currentBlock = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
             while (source.Position < source.Length)

@@ -3,7 +3,6 @@ using Scharfrichter.Codec.Charts;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
 
 namespace Scharfrichter.Codec.Archives
@@ -55,7 +54,7 @@ namespace Scharfrichter.Codec.Archives
         public void CreateStepTag(Entry[] entries, string gameType, string description, string difficulty, string playLevel, string grooveRadar, int panelCount, int quantize)
         {
             StringBuilder builder = new StringBuilder();
-            
+
             builder.AppendLine("NOTES:");
             builder.AppendLine("     " + gameType + ":");
             builder.AppendLine("     " + description + ":");
@@ -70,7 +69,7 @@ namespace Scharfrichter.Codec.Archives
             builder.Clear();
 
             List<SMNoteEntry> noteEntries = new List<SMNoteEntry>();
-            Dictionary<int, SMNoteEntry> previousEntries = new Dictionary<int,SMNoteEntry>();
+            Dictionary<int, SMNoteEntry> previousEntries = new Dictionary<int, SMNoteEntry>();
 
             foreach (Entry entry in entries)
             {

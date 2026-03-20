@@ -83,11 +83,11 @@ namespace Scharfrichter.Codec.Archives
             MemoryStream air = new MemoryStream();
 
             StreamWriter headerWriter = new StreamWriter(header);
-            StreamWriter shortNoteWriter = new StreamWriter(shortNote); shortNoteWriter.WriteLine("");  shortNoteWriter.WriteLine("ShortNote");
-            StreamWriter holdWriter = new StreamWriter(hold);           holdWriter.WriteLine("");       holdWriter.WriteLine("Hold");
-            StreamWriter slideWriter = new StreamWriter(slide);         slideWriter.WriteLine("");      slideWriter.WriteLine("Slide");
-            StreamWriter airHoldWriter = new StreamWriter(airHold);     airHoldWriter.WriteLine("");    airHoldWriter.WriteLine("AirHold");
-            StreamWriter airWriter = new StreamWriter(air);             airWriter.WriteLine("");        airWriter.WriteLine("Air");
+            StreamWriter shortNoteWriter = new StreamWriter(shortNote); shortNoteWriter.WriteLine(""); shortNoteWriter.WriteLine("ShortNote");
+            StreamWriter holdWriter = new StreamWriter(hold); holdWriter.WriteLine(""); holdWriter.WriteLine("Hold");
+            StreamWriter slideWriter = new StreamWriter(slide); slideWriter.WriteLine(""); slideWriter.WriteLine("Slide");
+            StreamWriter airHoldWriter = new StreamWriter(airHold); airHoldWriter.WriteLine(""); airHoldWriter.WriteLine("AirHold");
+            StreamWriter airWriter = new StreamWriter(air); airWriter.WriteLine(""); airWriter.WriteLine("Air");
 
             // create BPM metadata
             chart.Tags["BPM"] = Math.Round((double)(chart.DefaultBPM), 3).ToString();
@@ -272,7 +272,7 @@ namespace Scharfrichter.Codec.Archives
                     {
                         loopCount = 35;
                     }
-                    for (int loop = 0;loop < loopCount; loop++)
+                    for (int loop = 0; loop < loopCount; loop++)
                     {
                         List<EntryChuni> entriesTmp = new List<EntryChuni>();
                         string laneStringTmp = laneString;
@@ -445,7 +445,7 @@ namespace Scharfrichter.Codec.Archives
                                 case 5:
                                     airWriter.WriteLine(builder.ToString()); break;
                             }
-                            
+
                         }
                     }
                 }

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 
@@ -9,7 +8,7 @@ namespace Scharfrichter.Common
 {
     public partial class Configuration
     {
-        public Dictionary<string, InfoCollection> DB = new Dictionary<string,InfoCollection>();
+        public Dictionary<string, InfoCollection> DB = new Dictionary<string, InfoCollection>();
 
         private Encoding enc;
 
@@ -25,15 +24,15 @@ namespace Scharfrichter.Common
 
         public InfoCollection this[string key]
         {
-            get 
+            get
             {
                 if (!DB.ContainsKey(key))
                     DB[key] = new InfoCollection();
                 return DB[key];
             }
-            set 
-            { 
-                DB[key] = value; 
+            set
+            {
+                DB[key] = value;
             }
         }
 
@@ -134,7 +133,7 @@ namespace Scharfrichter.Common
 
     public class InfoCollection
     {
-        public Dictionary<string, string> Items = new Dictionary<string,string>();
+        public Dictionary<string, string> Items = new Dictionary<string, string>();
 
         public string this[string key]
         {
@@ -232,7 +231,7 @@ namespace Scharfrichter.Common
         {
             Items[key] = newValue.ToString();
         }
- 
+
         public void SetBool(string key, bool newValue)
         {
             Items[key] = newValue.ToString();

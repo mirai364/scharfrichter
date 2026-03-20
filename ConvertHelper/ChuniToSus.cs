@@ -1,17 +1,12 @@
-﻿using Scharfrichter.Codec;
+﻿using DDSReader;
+using Scharfrichter.Codec;
 using Scharfrichter.Codec.Archives;
 using Scharfrichter.Codec.Charts;
-using Scharfrichter.Codec.Sounds;
 using Scharfrichter.Common;
-
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Linq;
 using System.Xml.Linq;
-using DDSReader;
 
 namespace ConvertHelper
 {
@@ -107,11 +102,13 @@ namespace ConvertHelper
                                                 level = musicXml.Element("starDifType").Value
                                             }
                                         );
-                                    } else
+                                    }
+                                    else
                                     {
                                         musicData.Add(
                                             boxedLunchElement.Element("file").Element("path").Value,
-                                            new MusicData() {
+                                            new MusicData()
+                                            {
                                                 type = boxedLunchElement.Element("type").Element("id").Value,
                                                 typeName = boxedLunchElement.Element("type").Element("data").Value,
                                                 level = boxedLunchElement.Element("level").Value
@@ -123,14 +120,14 @@ namespace ConvertHelper
 
                             System.IO.StreamReader file = new System.IO.StreamReader(args[i]);
                             ChuniC2S archive = ChuniC2S.Read(file, unitNumerator, unitDenominator);
-                                ChartChuni chart = archive.chart;
-                                chart.Tags["ID"] = id;
-                                chart.Tags["TITLE"] = title;
-                                chart.Tags["ARTIST"] = artist;
-                                chart.Tags["GENRE"] = genre;
-                                chart.Tags["PLAYLEVEL"] = musicData[fileName].level;
-                                chart.Tags["TYPE"] = musicData[fileName].type;
-                                chart.Tags["TYPENAME"] = musicData[fileName].typeName;
+                            ChartChuni chart = archive.chart;
+                            chart.Tags["ID"] = id;
+                            chart.Tags["TITLE"] = title;
+                            chart.Tags["ARTIST"] = artist;
+                            chart.Tags["GENRE"] = genre;
+                            chart.Tags["PLAYLEVEL"] = musicData[fileName].level;
+                            chart.Tags["TYPE"] = musicData[fileName].type;
+                            chart.Tags["TYPENAME"] = musicData[fileName].typeName;
 
                             ConvertChart(chart, config, filename, 1, null, "1");
                             break;
@@ -176,7 +173,7 @@ namespace ConvertHelper
             using (MemoryStream mem = new MemoryStream())
             {
                 SUS sus = new SUS();
-                sus.chart = chart ;
+                sus.chart = chart;
 
                 string name = "";
                 if (chart.Tags.ContainsKey("TITLE"))
@@ -210,7 +207,8 @@ namespace ConvertHelper
                 if (chart.Tags["TYPENAME"] == "WORLD'S END")
                 {
                     name += "(" + sus.chart.Tags["TYPENAME"] + " " + chart.Tags["TYPE"].Substring(2) + chart.Tags["PLAYLEVEL"] + ")";
-                } else
+                }
+                else
                 {
                     name += "(" + sus.chart.Tags["TYPENAME"] + ")";
                 }

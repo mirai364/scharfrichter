@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
+﻿using System.IO;
 
 // the decompression function is ported from unz.c (thanks Tau)
 
@@ -30,13 +26,13 @@ namespace Scharfrichter.Codec.Compression
         static public void Decompress(Stream source, Stream target, int length, int decompLength, BemaniLZSS2Properties props)
         {
             byte[] ring = new byte[props.ringBufferSize];
-            int ring_pos = props.ringBufferOffset; 
-            int chunk_offset; 
-            int chunk_length; 
+            int ring_pos = props.ringBufferOffset;
+            int chunk_offset;
+            int chunk_length;
             int control_word = 1;
             int controlBitsLeft = 0;
             int controlBitMask = 0x1;
-            byte cmd1; 
+            byte cmd1;
             byte cmd2;
             byte data;
 
@@ -50,7 +46,7 @@ namespace Scharfrichter.Codec.Compression
             {
                 BinaryReaderEx reader = new BinaryReaderEx(mem);
 
-                while (decompLength > 0 && length > 0) 
+                while (decompLength > 0 && length > 0)
                 {
                     if (controlBitsLeft == 0)
                     {
@@ -72,8 +68,8 @@ namespace Scharfrichter.Codec.Compression
 
                         ring_pos = (ring_pos + 1) % props.ringBufferSize;
                         decompLength--;
-                    } 
-                    else 
+                    }
+                    else
                     {
                         /* Reference to data in ring buffer */
 
@@ -100,7 +96,7 @@ namespace Scharfrichter.Codec.Compression
                                 return;
                         }
 
-                        for ( ; chunk_length > 0 && length > 0 ; chunk_length--) 
+                        for (; chunk_length > 0 && length > 0; chunk_length--)
                         {
                             /* Copy historical data to output AND current ring pos */
                             writer.Write(ring[chunk_offset]);

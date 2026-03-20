@@ -3,9 +3,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace Scharfrichter.Codec.Media
 {
@@ -202,7 +199,7 @@ namespace Scharfrichter.Codec.Media
             {
                 result = DecompressZlib((UInt32)entry.length, header.hunkSize * header.seclen);
             }
-            
+
             return result;
         }
 

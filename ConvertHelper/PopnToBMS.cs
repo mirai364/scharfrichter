@@ -2,6 +2,7 @@
 using Scharfrichter.Codec.Archives;
 using Scharfrichter.Codec.Charts;
 using Scharfrichter.Codec.Sounds;
+using Scharfrichter.Codec.Sounds.Encoders;
 using Scharfrichter.Common;
 
 using System;
@@ -104,7 +105,8 @@ namespace ConvertHelper
                             Console.WriteLine();
                             return;
                         }
-                    } else
+                    }
+                    else
                     {
                         int maxIndex = -1;
                         int difficaltyIndex = 0;
@@ -155,16 +157,16 @@ namespace ConvertHelper
                                     Console.WriteLine("Processing File: " + filename);
                                     difficaltyIndex = 2;
                                     break;
-                                //case 5:
-                                //    // Battle
-                                //    filename = input + title + "_bp.bin";
-                                //    if (!File.Exists(filename))
-                                //    {
-                                //        continue;
-                                //    }
-                                //    Console.WriteLine("Processing File: " + filename);
-                                //    difficaltyIndex = 99;
-                                //    break;
+                                    //case 5:
+                                    //    // Battle
+                                    //    filename = input + title + "_bp.bin";
+                                    //    if (!File.Exists(filename))
+                                    //    {
+                                    //        continue;
+                                    //    }
+                                    //    Console.WriteLine("Processing File: " + filename);
+                                    //    difficaltyIndex = 99;
+                                    //    break;
                             }
 
                             byte[] data = File.ReadAllBytes(filename);
@@ -342,12 +344,14 @@ namespace ConvertHelper
             string targetPath = Path.Combine(outputFolder, version, name);
             Common.SafeCreateDirectory(targetPath);
 
+            ISoundEncoder encoder;
             int maxIndex = -1;
             int maxLength = 0;
             if (isPre2DX)
             {
-                string output = Path.Combine(targetPath, @"preview" + @".wav");
-                sounds[0].WriteFile(output, volume);
+                string output = Path.Combine(targetPath, @"preview" + @".ogg");
+                encoder = new OggEncoder();
+                encoder.EncodeToFile(sounds[0], output, volume);
                 // Rewrite date/time based on file date/time
                 File.SetCreationTime(output, updateTime);
                 File.SetLastWriteTime(output, updateTime);
@@ -371,8 +375,9 @@ namespace ConvertHelper
                         maxIndex = sampleIndex;
                         maxLength = sounds[j].Data.Length;
                     }
-                    string output = Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".wav");
-                    sounds[j].WriteFile(output, volume);
+                    string output = Path.Combine(targetPath, Util.ConvertToBMEString(sampleIndex, 4) + @".ogg");
+                    encoder = new OggEncoder();
+                    encoder.EncodeToFile(sounds[j], output, volume);
                     // Rewrite date/time based on file date/time
                     File.SetCreationTime(output, updateTime);
                     File.SetLastWriteTime(output, updateTime);

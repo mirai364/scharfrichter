@@ -1,12 +1,8 @@
 ﻿using Scharfrichter.Codec;
 using Scharfrichter.Codec.Archives;
-using Scharfrichter.Codec.Heuristics;
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace IFSExtract
 {

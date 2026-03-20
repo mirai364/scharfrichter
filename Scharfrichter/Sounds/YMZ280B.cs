@@ -1,11 +1,8 @@
-﻿using NAudio;
-using NAudio.Wave;
+﻿using NAudio.Wave;
 
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Sounds
 {

@@ -1,11 +1,7 @@
 ﻿using Scharfrichter.Codec.Encryption;
 using Scharfrichter.Codec.Sounds;
-
-using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace Scharfrichter.Codec.Archives
 {
@@ -108,7 +104,7 @@ namespace Scharfrichter.Codec.Archives
                 reader.BaseStream.Position = sampleOffset[i];
                 result.sounds.Add(Bemani2DXSound.Read(reader.BaseStream));
             }
-            
+
             return result;
         }
 

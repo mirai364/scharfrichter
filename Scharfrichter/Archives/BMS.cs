@@ -50,6 +50,30 @@ namespace Scharfrichter.Codec.Archives
             }
         }
 
+        private int CalculateTotalGauge(int noteCount)
+        {
+            double gauge = 0;
+
+            if (noteCount < 1)
+            {
+                gauge = 0;
+            }
+            else if (noteCount < 400)
+            {
+                gauge = 200.0 + (noteCount / 5.0);
+            }
+            else if (noteCount < 600)
+            {
+                gauge = 280.0 + ((noteCount - 400.0) / 2.5);
+            }
+            else // noteCount >= 600
+            {
+                gauge = 360.0 + ((noteCount - 600.0) / 5.0);
+            }
+
+            return (int)Math.Floor(gauge);
+        }
+
         public void GenerateSampleMap()
         {
             int[] usedSamples = charts[0].UsedSamples();
@@ -405,6 +429,10 @@ namespace Scharfrichter.Codec.Archives
             expansionWriter.WriteLine("");
             expansionWriter.WriteLine("");
             expansionWriter.WriteLine("*---------------------- EXPANSION FIELD");
+            int noteCount = chart.NoteCount(1) + chart.NoteCount(2);
+            double gauge = CalculateTotalGauge(noteCount);
+            expansionWriter.WriteLine("#TOTAL " + gauge);
+
             expansionWriter.WriteLine("#PREVIEW preview.ogg");
             if (chart.Tags.ContainsKey("VIDEO") && chart.useMovie)
             {

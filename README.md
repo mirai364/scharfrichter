@@ -18,6 +18,8 @@ in the same folder. Output folder options are planned for the future.
 ### optional  
 If you need to include a movie when converting ".1" file, please set "MOVIEFOLDER" setting and "ISSAMEFOLDERMOVIE" to "true" in [BMS].  
 If you want to change the output folder, please change "OUTPUT" setting in [BMS]. 
+If you want to output bmson instead of BMS/BME, set "OUTPUTFORMAT" to "bmson" in [BMS]. By default, bmson writes one OGG per keysound for compatibility. Set "OPTIMIZEBMSONSOUNDS" to "true" to pack non-overlapping keysounds into shared OGG timelines and reference them with sliced notes.
+When converting .1 charts to bmson, the matching .s3p/.2dx sound files must be in the same folder. KEYSETSP0-5 and KEYSETDP0-5 in BeatmaniaDB select suffixed sound files such as 01000a.2dx; songs without database keysets use the unsuffixed sound file such as 01000.2dx.
 
 ## What it can do
 

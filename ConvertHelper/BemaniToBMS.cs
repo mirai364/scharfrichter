@@ -21,6 +21,9 @@ namespace ConvertHelper
         private const float DefaultSampleVolume = 0.6f;
         private const float FullSampleVolume = 1.0f;
         private const int BmsSampleLimit = 1295;
+        private const double MaxPackedTrackSeconds = 600.0;
+        private const double PackedSoundEventGapSeconds = 0.000;
+        private const double PackedSoundTailPaddingSeconds = 1.000;
         private static readonly ParallelOptions SampleEncodingParallelOptions = CreateSampleEncodingParallelOptions();
 
         /// <summary>
@@ -53,6 +56,35 @@ namespace ConvertHelper
         /// <summary>
         /// Holds BMS chart-writing options read from configuration.
         /// </summary>
+        private sealed class PendingBmsonChart
+        {
+            public Chart Chart;
+            public Configuration Config;
+            public string Filename;
+            public int Index;
+            public DateTime UpdateTime;
+            public string Version;
+        }
+
+        private sealed class PackedSoundEvent
+        {
+            public List<Entry> Entries = new List<Entry>();
+            public int SampleIndex;
+            public double StartSeconds;
+            public double EndSeconds;
+            public int TrackIndex;
+        }
+
+        private sealed class PackedSoundTrackBuild
+        {
+            public List<PackedSoundEvent> Events = new List<PackedSoundEvent>();
+            public double EndSeconds;
+            public string Name;
+        }
+
+        private static readonly List<PendingBmsonChart> PendingBmsonCharts = new List<PendingBmsonChart>();
+        private static readonly Dictionary<Chart, BmsonSoundLayout> BmsonSoundLayouts = new Dictionary<Chart, BmsonSoundLayout>();
+        private static readonly HashSet<string> ConvertedSoundFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private sealed class ChartOptions
         {
             public int QuantizeNotes;
@@ -63,6 +95,7 @@ namespace ConvertHelper
             public bool IsSameFolderMovie;
             public bool UseMovie;
             public int OutputRank;
+            public string OutputFormat;
         }
 
         /// <summary>
@@ -89,7 +122,7 @@ namespace ConvertHelper
         {
             int chartIndex;
             int sampleCount;
-            if (!idUseRenderAutoTip && ArchiveExceedsBmsSampleLimit(archive, out chartIndex, out sampleCount))
+            if (!IsBmsonOutput(config) && !idUseRenderAutoTip && ArchiveExceedsBmsSampleLimit(archive, out chartIndex, out sampleCount))
             {
                 RetryWithRenderAutoTip(filename, chartIndex, sampleCount);
                 return;
@@ -177,16 +210,26 @@ namespace ConvertHelper
                 BMS bms = CreateBms(chart, options, filename);
                 string name = GetChartName(chart, filename);
                 string dirPath = BuildChartDirectory(config, version, name);
-                string output = BuildChartOutputPath(dirPath, ref name, options.Title, bms.Charts[0]);
+                string output = BuildChartOutputPath(dirPath, ref name, options.Title, bms.Charts[0], options.OutputFormat);
 
                 ConfigureMovieOutput(bms.Charts[0], chart, options, dirPath);
-                ConfigureSampleMap(bms, map);
                 QuantizeChartNotes(bms.Charts[0], options.QuantizeNotes);
 
-                if (!bms.Write(mem, true))
-                    return false;
+                if (IsBmsonOutput(options.OutputFormat))
+                {
+                    Bmson bmson = new Bmson();
+                    bmson.Charts = bms.Charts;
+                    if (!bmson.Write(mem, GetBmsonSoundLayout(chart)))
+                        return false;
+                }
+                else
+                {
+                    ConfigureSampleMap(bms, map);
+                    if (!bms.Write(mem, true))
+                        return false;
+                }
 
-                WriteBmsFile(output, mem, updateTime);
+                WriteChartFile(output, mem, updateTime);
             }
 
             return true;
@@ -195,7 +238,7 @@ namespace ConvertHelper
         /// <summary>
         /// Encodes a sound set as OGG samples or a preview file for pre-2DX assets.
         /// </summary>
-        static public void ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "")
+        static public void ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "", string outputFormat = "bms")
         {
             string name = GetSoundSetName(filename, nameInfo);
             string targetPath = Path.Combine(outputFolder, version, name);
@@ -207,7 +250,7 @@ namespace ConvertHelper
                 return;
             }
 
-            ConvertSampleSounds(sounds, targetPath, INDEX, volume, updateTime);
+            ConvertSampleSounds(sounds, targetPath, INDEX, volume, updateTime, outputFormat);
         }
 
         /// <summary>
@@ -305,10 +348,22 @@ namespace ConvertHelper
                         ConvertBemani1Archive(source, input, context);
                         break;
                     case @".2DX":
+                        if (ConvertedSoundFiles.Contains(Path.GetFullPath(filename)))
+                            return;
+                        EnsurePendingChartForSound(input, context);
+                        if (ConvertedSoundFiles.Contains(Path.GetFullPath(filename)))
+                            return;
                         Convert2DXSamples(source, input, context);
+                        ConvertedSoundFiles.Add(Path.GetFullPath(filename));
                         break;
                     case @".S3P":
+                        if (ConvertedSoundFiles.Contains(Path.GetFullPath(filename)))
+                            return;
+                        EnsurePendingChartForSound(input, context);
+                        if (ConvertedSoundFiles.Contains(Path.GetFullPath(filename)))
+                            return;
                         ConvertS3PSamples(source, input, context);
+                        ConvertedSoundFiles.Add(Path.GetFullPath(filename));
                         break;
                     case @".CS":
                         ConvertChart(BeatmaniaIIDXCSNew.Read(source), context.Config, filename, -1, null, input.UpdateTime);
@@ -325,7 +380,7 @@ namespace ConvertHelper
                         ConvertSD9Sound(source, input);
                         break;
                     case @".SSP":
-                        ConvertSounds(BemaniSSP.Read(source).Sounds, filename, FullSampleVolume, input.UpdateTime);
+                        ConvertSounds(BemaniSSP.Read(source).Sounds, filename, FullSampleVolume, input.UpdateTime, null, "", "", false, "", context.Config["BMS"].GetString("OutputFormat", "bms"));
                         break;
                 }
             }
@@ -392,8 +447,116 @@ namespace ConvertHelper
 
             ApplyDatabaseMetadata(archive, input.DatabaseName, context.Config, context.Database, context.UseRenderAutoTip);
             ConvertArchive(archive, context.Config, input.Filename, input.UpdateTime, input.Version, context.UseRenderAutoTip);
+            ConvertRequiredSoundFiles(archive, input, context);
         }
 
+        private static void ConvertRequiredSoundFiles(Archive archive, InputFileInfo chartInput, ConversionContext context)
+        {
+            if (!IsBmsonOutput(context.Config) || chartInput.IsPre2DX)
+                return;
+
+            HashSet<string> soundSets = GetRequiredSoundSets(archive);
+            foreach (string soundSet in soundSets)
+            {
+                string soundFile = ResolveSoundFile(chartInput.Filename, soundSet);
+                if (soundFile == null)
+                    throw new FileNotFoundException("Required sound file was not found for " + Path.GetFileName(chartInput.Filename) + " keyset " + soundSet + ". Expected a .s3p or .2dx file in the same folder.");
+
+                ProcessFile(soundFile, context);
+            }
+        }
+
+        private static HashSet<string> GetRequiredSoundSets(Archive archive)
+        {
+            HashSet<string> soundSets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < archive.ChartCount; i++)
+            {
+                Chart chart = archive.Charts[i];
+                if (chart != null)
+                    soundSets.Add(GetChartSoundSet(chart));
+            }
+
+            if (soundSets.Count == 0)
+                soundSets.Add("0");
+
+            return soundSets;
+        }
+
+        private static string ResolveSoundFile(string chartFile, string soundSet)
+        {
+            string directory = Path.GetDirectoryName(chartFile);
+            string baseName = Path.GetFileNameWithoutExtension(chartFile);
+            string suffix = soundSet == "0" ? "" : soundSet;
+            string[] extensions = { ".s3p", ".2dx" };
+
+            foreach (string extension in extensions)
+            {
+                string candidate = Path.Combine(directory, baseName + suffix + extension);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+
+            return null;
+        }
+
+        private static void EnsurePendingChartForSound(InputFileInfo soundInput, ConversionContext context)
+        {
+            if (!IsBmsonOutput(context.Config))
+                return;
+
+            string soundSet = GetSoundSet(soundInput);
+            if (HasPendingChartForSound(soundInput, context, soundSet))
+                return;
+
+            string chartFile = ResolveChartFileForSound(soundInput.Filename);
+            if (chartFile == null)
+                throw new FileNotFoundException("Sound file " + Path.GetFileName(soundInput.Filename) + " requires a matching .1 file in the same folder for bmson conversion.");
+
+            ProcessFile(chartFile, context);
+            if (!HasPendingChartForSound(soundInput, context, soundSet))
+                throw new FileNotFoundException("Matching .1 file was found, but no chart uses keyset " + soundSet + " for " + Path.GetFileName(soundInput.Filename) + ".");
+        }
+
+        private static bool HasPendingChartForSound(InputFileInfo soundInput, ConversionContext context, string soundSet)
+        {
+            string title = "";
+            if (context.Database[soundInput.DatabaseName]["TITLE"] != "")
+                title = context.Database[soundInput.DatabaseName]["TITLE"];
+
+            string name = GetSoundSetName(soundInput.Filename, title);
+            string targetPath = Path.Combine(context.OutputFolder, soundInput.Version, name);
+            return FindPendingBmsonCharts(targetPath, soundSet).Count > 0;
+        }
+
+        private static string ResolveChartFileForSound(string soundFile)
+        {
+            string directory = Path.GetDirectoryName(soundFile);
+            string baseName = Path.GetFileNameWithoutExtension(soundFile);
+            if (baseName.Length > 5)
+                baseName = baseName.Substring(0, 5);
+
+            string candidate = Path.Combine(directory, baseName + ".1");
+            if (File.Exists(candidate))
+                return candidate;
+
+            return null;
+        }
+
+        private static string GetSoundSet(InputFileInfo input)
+        {
+            if (String.IsNullOrEmpty(input.Index))
+                return "0";
+
+            return input.Index;
+        }
+
+        private static string GetChartSoundSet(Chart chart)
+        {
+            if (chart.Tags.ContainsKey("KEYSET") && chart.Tags["KEYSET"] != "")
+                return chart.Tags["KEYSET"];
+
+            return "0";
+        }
         /// <summary>
         /// Builds the chart ignore map and renders auto-tip samples when requested.
         /// </summary>
@@ -494,7 +657,10 @@ namespace ConvertHelper
                 title = context.Database[input.DatabaseName]["TITLE"];
             }
 
-            ConvertSounds(sounds, input.Filename, volume, input.UpdateTime, input.Index, context.OutputFolder, title, input.IsPre2DX, input.Version);
+            if (TryConvertPackedBmsonSounds(sounds, input, context, volume, title))
+                return;
+
+            ConvertSounds(sounds, input.Filename, volume, input.UpdateTime, input.Index, context.OutputFolder, title, input.IsPre2DX, input.Version, context.Config["BMS"].GetString("OutputFormat", "bms"));
         }
 
         /// <summary>
@@ -521,6 +687,7 @@ namespace ConvertHelper
                     continue;
 
                 Console.WriteLine("Converting Chart " + i.ToString());
+                RegisterPendingBmsonChart(archive.Charts[i], config, filename, i, updateTime, version);
                 isSuccess = ConvertChart(archive.Charts[i], config, filename, i, null, updateTime, version);
                 if (!isSuccess)
                     break;
@@ -529,6 +696,30 @@ namespace ConvertHelper
             return isSuccess;
         }
 
+        private static void RegisterPendingBmsonChart(Chart chart, Configuration config, string filename, int index, DateTime updateTime, string version)
+        {
+            if (!IsBmsonOutput(config))
+                return;
+
+            PendingBmsonCharts.Add(new PendingBmsonChart
+            {
+                Chart = chart,
+                Config = config,
+                Filename = filename,
+                Index = index,
+                UpdateTime = updateTime,
+                Version = version
+            });
+        }
+
+        private static BmsonSoundLayout GetBmsonSoundLayout(Chart chart)
+        {
+            BmsonSoundLayout layout;
+            if (BmsonSoundLayouts.TryGetValue(chart, out layout))
+                return layout;
+
+            return null;
+        }
         /// <summary>
         /// Reads chart conversion options from configuration.
         /// </summary>
@@ -546,7 +737,8 @@ namespace ConvertHelper
                 MovieFolder = config["BMS"]["MovieFolder"],
                 IsSameFolderMovie = config["BMS"].GetBool("IsSameFolderMovie"),
                 UseMovie = config["BMS"].GetBool("UseMovie"),
-                OutputRank = config["BMS"].GetValue("OutputRank")
+                OutputRank = config["BMS"].GetValue("OutputRank"),
+                OutputFormat = config["BMS"].GetString("OutputFormat", "bms")
             };
         }
 
@@ -563,6 +755,9 @@ namespace ConvertHelper
             targetChart.Tags["TITLE"] = name;
             CopyTag(chart, targetChart, "ARTIST");
             CopyTag(chart, targetChart, "GENRE");
+
+            if (options.Title != null && options.Title.Length > 0)
+                targetChart.Tags["CHARTNAME"] = options.Title;
 
             if (options.Difficulty > 0)
                 targetChart.Tags["DIFFICULTY"] = options.Difficulty.ToString();
@@ -609,7 +804,7 @@ namespace ConvertHelper
         /// <summary>
         /// Builds the final BMS file path and appends difficulty text to the filename.
         /// </summary>
-        private static string BuildChartOutputPath(string dirPath, ref string name, string title, Chart chart)
+        private static string BuildChartOutputPath(string dirPath, ref string name, string title, Chart chart, string outputFormat)
         {
             int players = chart.Players;
             name = Common.nameReplace(name);
@@ -624,8 +819,27 @@ namespace ConvertHelper
                 name += " [" + title + "]";
             }
 
-            string extension = ShouldUseBmeExtension(chart) ? ".bme" : ".bms";
+            string extension = IsBmsonOutput(outputFormat) ? ".bmson" : (ShouldUseBmeExtension(chart) ? ".bme" : ".bms");
             return Path.Combine(dirPath, @"@" + name + extension);
+        }
+
+        /// <summary>
+        /// Returns true when the configured chart output format is bmson.
+        /// </summary>
+        private static bool IsBmsonOutput(Configuration config)
+        {
+            if (config == null)
+                return false;
+
+            return IsBmsonOutput(config["BMS"].GetString("OutputFormat", "bms"));
+        }
+
+        /// <summary>
+        /// Returns true when the configured chart output format is bmson.
+        /// </summary>
+        private static bool IsBmsonOutput(string outputFormat)
+        {
+            return String.Equals(outputFormat, "bmson", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -713,9 +927,9 @@ namespace ConvertHelper
         }
 
         /// <summary>
-        /// Writes a BMS file and preserves the source timestamp.
+        /// Writes a chart file and preserves the source timestamp.
         /// </summary>
-        private static void WriteBmsFile(string output, MemoryStream mem, DateTime updateTime)
+        private static void WriteChartFile(string output, MemoryStream mem, DateTime updateTime)
         {
             File.WriteAllBytes(output, mem.ToArray());
             SetFileTimes(output, updateTime);
@@ -732,6 +946,326 @@ namespace ConvertHelper
             return Common.nameReplace(nameInfo);
         }
 
+        private static bool TryConvertPackedBmsonSounds(Sound[] sounds, InputFileInfo input, ConversionContext context, float volume, string nameInfo)
+        {
+            if (!IsBmsonOutput(context.Config) || !context.Config["BMS"].GetBool("OptimizeBmsonSounds") || input.IsPre2DX || PendingBmsonCharts.Count == 0)
+                return false;
+
+            string name = GetSoundSetName(input.Filename, nameInfo);
+            string targetPath = Path.Combine(context.OutputFolder, input.Version, name);
+            string soundSet = GetSoundSet(input);
+            List<PendingBmsonChart> charts = FindPendingBmsonCharts(targetPath, soundSet);
+            if (charts.Count == 0)
+                return false;
+
+            string soundFolder = Bmson.GetSoundFolder(soundSet);
+            string soundPath = Path.Combine(targetPath, soundFolder);
+            Common.SafeCreateDirectory(soundPath);
+
+            List<PackedSoundTrackBuild> tracksToEncode = BuildPackedBmsonLayouts(charts, sounds, context, soundFolder);
+
+            foreach (PackedSoundTrackBuild track in tracksToEncode)
+                EncodePackedSoundTrack(track, sounds, soundPath, volume, input.UpdateTime);
+
+            foreach (PendingBmsonChart pending in charts)
+                ConvertChart(pending.Chart, pending.Config, pending.Filename, pending.Index, null, pending.UpdateTime, pending.Version);
+
+            SetDirectoryTimes(soundPath, input.UpdateTime);
+            return true;
+        }
+
+        private static List<PendingBmsonChart> FindPendingBmsonCharts(string targetPath, string soundSet)
+        {
+            List<PendingBmsonChart> result = new List<PendingBmsonChart>();
+            string fullTargetPath = Path.GetFullPath(targetPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            foreach (PendingBmsonChart pending in PendingBmsonCharts)
+            {
+                string chartName = GetChartName(pending.Chart, pending.Filename);
+                string chartPath = BuildChartDirectory(pending.Config, pending.Version, chartName);
+                chartPath = Path.GetFullPath(chartPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (String.Equals(chartPath, fullTargetPath, StringComparison.OrdinalIgnoreCase) && String.Equals(GetChartSoundSet(pending.Chart), soundSet, StringComparison.OrdinalIgnoreCase))
+                    result.Add(pending);
+            }
+
+            return result;
+        }
+
+        private static List<PackedSoundTrackBuild> BuildPackedBmsonLayouts(List<PendingBmsonChart> charts, Sound[] sounds, ConversionContext context, string soundFolder)
+        {
+            Dictionary<Entry, Chart> chartByEntry = new Dictionary<Entry, Chart>();
+            Dictionary<string, PackedSoundEvent> eventsBySignature = new Dictionary<string, PackedSoundEvent>();
+
+            foreach (PendingBmsonChart pending in charts)
+            {
+                EnsureLinearOffsets(pending.Chart);
+                foreach (Entry entry in GetSortedMarkerEntries(pending.Chart))
+                {
+                    PackedSoundEvent soundEvent = CreatePackedSoundEvent(entry, sounds, context);
+                    if (soundEvent == null)
+                        continue;
+
+                    chartByEntry[entry] = pending.Chart;
+                    string signature = BuildPackedEventSignature(soundEvent);
+                    PackedSoundEvent existingEvent;
+                    if (!eventsBySignature.TryGetValue(signature, out existingEvent))
+                    {
+                        existingEvent = soundEvent;
+                        eventsBySignature[signature] = existingEvent;
+                    }
+
+                    existingEvent.Entries.Add(entry);
+                }
+            }
+
+            List<PackedSoundEvent> events = new List<PackedSoundEvent>(eventsBySignature.Values);
+            events.Sort(ComparePackedSoundEvents);
+
+            List<PackedSoundTrackBuild> tracks = new List<PackedSoundTrackBuild>();
+            foreach (PackedSoundEvent soundEvent in events)
+            {
+                PackedSoundTrackBuild targetTrack = null;
+                for (int i = 0; i < tracks.Count; i++)
+                {
+                    if (CanAppendPackedSoundEvent(tracks[i], soundEvent, sounds))
+                    {
+                        targetTrack = tracks[i];
+                        break;
+                    }
+                }
+
+                if (targetTrack == null)
+                {
+                    targetTrack = new PackedSoundTrackBuild();
+                    tracks.Add(targetTrack);
+                }
+
+                soundEvent.TrackIndex = tracks.IndexOf(targetTrack);
+                targetTrack.Events.Add(soundEvent);
+                targetTrack.EndSeconds = Math.Max(targetTrack.EndSeconds, soundEvent.EndSeconds);
+            }
+
+            for (int i = 0; i < tracks.Count; i++)
+                tracks[i].Name = soundFolder + "/" + "bmson_" + (i + 1).ToString("0000") + ".ogg";
+
+            foreach (PendingBmsonChart pending in charts)
+                BmsonSoundLayouts[pending.Chart] = BuildChartPackedBmsonLayout(pending.Chart, tracks, chartByEntry);
+
+            return tracks;
+        }
+
+        private static PackedSoundEvent CreatePackedSoundEvent(Entry entry, Sound[] sounds, ConversionContext context)
+        {
+            int sampleIndex = (int)((double)entry.Value);
+            if (sampleIndex <= 0 || sampleIndex > sounds.Length || sounds[sampleIndex - 1] == null)
+                return null;
+
+            Sound sound = sounds[sampleIndex - 1];
+            if (sound.Data == null || sound.Data.Length == 0 || sound.Format == null || sound.Format.AverageBytesPerSecond <= 0)
+                return null;
+
+            double startSeconds = GetEntrySeconds(entry, context);
+            double durationSeconds = (double)sound.Data.Length / sound.Format.AverageBytesPerSecond;
+            return new PackedSoundEvent
+            {
+                SampleIndex = sampleIndex,
+                StartSeconds = startSeconds,
+                EndSeconds = startSeconds + durationSeconds
+            };
+        }
+
+        private static int ComparePackedSoundEvents(PackedSoundEvent left, PackedSoundEvent right)
+        {
+            int result = left.StartSeconds.CompareTo(right.StartSeconds);
+            if (result != 0)
+                return result;
+
+            result = left.EndSeconds.CompareTo(right.EndSeconds);
+            if (result != 0)
+                return result;
+
+            return left.SampleIndex.CompareTo(right.SampleIndex);
+        }
+
+        private static bool CanAppendPackedSoundEvent(PackedSoundTrackBuild track, PackedSoundEvent soundEvent, Sound[] sounds)
+        {
+            if (track.Events.Count == 0)
+                return true;
+
+            if (soundEvent.StartSeconds < track.EndSeconds + PackedSoundEventGapSeconds)
+                return false;
+
+            if ((soundEvent.EndSeconds + PackedSoundTailPaddingSeconds - track.Events[0].StartSeconds) > MaxPackedTrackSeconds)
+                return false;
+
+            Sound sound = sounds[soundEvent.SampleIndex - 1];
+            return IsCompatiblePackedTrack(track, sound, sounds);
+        }
+
+        private static BmsonSoundLayout BuildChartPackedBmsonLayout(Chart chart, List<PackedSoundTrackBuild> tracks, Dictionary<Entry, Chart> chartByEntry)
+        {
+            BmsonSoundLayout layout = new BmsonSoundLayout();
+            Dictionary<int, int> layoutTrackIndexByGlobalIndex = new Dictionary<int, int>();
+
+            for (int globalTrackIndex = 0; globalTrackIndex < tracks.Count; globalTrackIndex++)
+            {
+                PackedSoundTrackBuild track = tracks[globalTrackIndex];
+                if (track.Events.Count == 0)
+                    continue;
+
+                bool hasChartRestart = false;
+                foreach (PackedSoundEvent soundEvent in track.Events)
+                {
+                    foreach (Entry entry in soundEvent.Entries)
+                    {
+                        Chart entryChart;
+                        if (!chartByEntry.TryGetValue(entry, out entryChart) || !Object.ReferenceEquals(entryChart, chart))
+                            continue;
+
+                        int layoutTrackIndex;
+                        if (!layoutTrackIndexByGlobalIndex.TryGetValue(globalTrackIndex, out layoutTrackIndex))
+                        {
+                            layoutTrackIndex = layout.Tracks.Count;
+                            layoutTrackIndexByGlobalIndex[globalTrackIndex] = layoutTrackIndex;
+                            layout.Tracks.Add(new BmsonSoundTrack { Index = layoutTrackIndex, Name = track.Name });
+                        }
+
+                        layout.Notes[entry] = new BmsonPackedNote
+                        {
+                            TrackIndex = layoutTrackIndex,
+                            Continue = hasChartRestart
+                        };
+                        hasChartRestart = true;
+                    }
+                }
+            }
+
+            return layout;
+        }
+
+        private static string BuildPackedEventSignature(PackedSoundEvent soundEvent)
+        {
+            int startMilliseconds = (int)Math.Round(soundEvent.StartSeconds * 1000.0);
+            return soundEvent.SampleIndex.ToString() + "@" + startMilliseconds.ToString();
+        }
+
+        private static double GetEntrySeconds(Entry entry, ConversionContext context)
+        {
+            double offset = (double)entry.LinearOffset;
+            if (context.UnitDenominator == 0)
+                return offset;
+
+            return offset * ((double)context.UnitNumerator / (double)context.UnitDenominator);
+        }
+        private static void EnsureLinearOffsets(Chart chart)
+        {
+            foreach (Entry entry in chart.Entries)
+            {
+                if (!entry.LinearOffsetInitialized)
+                {
+                    chart.CalculateLinearOffsets();
+                    return;
+                }
+            }
+        }
+
+        private static List<Entry> GetSortedMarkerEntries(Chart chart)
+        {
+            List<Entry> entries = new List<Entry>();
+            foreach (Entry entry in chart.Entries)
+            {
+                if (entry.Type == EntryType.Marker)
+                    entries.Add(entry);
+            }
+
+            entries.Sort();
+            return entries;
+        }
+
+        private static bool IsCompatiblePackedTrack(PackedSoundTrackBuild track, Sound sound, Sound[] sounds)
+        {
+            if (track.Events.Count == 0)
+                return true;
+
+            Sound firstSound = sounds[track.Events[0].SampleIndex - 1];
+            return AreCompatibleWaveFormats(firstSound.Format, sound.Format);
+        }
+        private static bool AreCompatibleWaveFormats(NAudio.Wave.WaveFormat left, NAudio.Wave.WaveFormat right)
+        {
+            if (left == null || right == null)
+                return false;
+
+            return left.Encoding == right.Encoding &&
+                   left.SampleRate == right.SampleRate &&
+                   left.Channels == right.Channels &&
+                   left.BitsPerSample == right.BitsPerSample &&
+                   left.BlockAlign == right.BlockAlign;
+        }
+        private static void EncodePackedSoundTrack(PackedSoundTrackBuild track, Sound[] sounds, string soundPath, float volume, DateTime updateTime)
+        {
+            Sound firstSound = sounds[track.Events[0].SampleIndex - 1];
+            int bytesPerFrame = firstSound.Format.BlockAlign;
+            double trackSeconds = track.EndSeconds - track.Events[0].StartSeconds + PackedSoundTailPaddingSeconds;
+            if (trackSeconds > MaxPackedTrackSeconds)
+                throw new InvalidOperationException("Packed bmson sound track is too long: " + trackSeconds.ToString("0.000") + " seconds.");
+
+            int byteCount = SecondsToByteOffset(trackSeconds, firstSound.Format.AverageBytesPerSecond, bytesPerFrame);
+            byte[] buffer = new byte[Math.Max(bytesPerFrame, byteCount + bytesPerFrame)];
+
+            double startSeconds = track.Events[0].StartSeconds;
+            foreach (PackedSoundEvent soundEvent in track.Events)
+            {
+                Sound sourceSound = sounds[soundEvent.SampleIndex - 1];
+                byte[] sourceData = AreCompatibleWaveFormats(sourceSound.Format, firstSound.Format) ? sourceSound.Render(volume) : sourceSound.RenderNewFormat(volume, firstSound.Format);
+                int offset = SecondsToByteOffset(soundEvent.StartSeconds - startSeconds, firstSound.Format.AverageBytesPerSecond, bytesPerFrame);
+                EnsureBufferLength(ref buffer, offset + sourceData.Length, bytesPerFrame);
+                MixPcm16(buffer, sourceData, offset);
+            }
+
+            Sound packedSound = new Sound
+            {
+                Data = buffer,
+                Format = firstSound.Format
+            };
+
+            string output = Path.Combine(soundPath, Path.GetFileName(track.Name));
+            ISoundEncoder encoder = new OggEncoder();
+            encoder.EncodeToFile(packedSound, output, 1.0f);
+            SetFileTimes(output, updateTime);
+        }
+
+        private static void EnsureBufferLength(ref byte[] buffer, int requiredLength, int bytesPerFrame)
+        {
+            if (requiredLength <= buffer.Length)
+                return;
+
+            int alignedLength = requiredLength;
+            int remainder = alignedLength % bytesPerFrame;
+            if (remainder != 0)
+                alignedLength += bytesPerFrame - remainder;
+
+            Array.Resize(ref buffer, alignedLength);
+        }
+        private static int SecondsToByteOffset(double seconds, int averageBytesPerSecond, int bytesPerFrame)
+        {
+            int offset = (int)Math.Round(seconds * averageBytesPerSecond);
+            return offset - (offset % bytesPerFrame);
+        }
+
+        private static void MixPcm16(byte[] target, byte[] source, int offset)
+        {
+            int length = Math.Min(source.Length, target.Length - offset);
+            length -= length % 2;
+            for (int i = 0; i < length; i += 2)
+            {
+                int targetSample = BitConverter.ToInt16(target, offset + i);
+                int sourceSample = BitConverter.ToInt16(source, i);
+                int mixed = Math.Max(Int16.MinValue, Math.Min(Int16.MaxValue, targetSample + sourceSample));
+                byte[] bytes = BitConverter.GetBytes((short)mixed);
+                target[offset + i] = bytes[0];
+                target[offset + i + 1] = bytes[1];
+            }
+        }
         /// <summary>
         /// Writes the preview OGG for a pre-2DX sound archive.
         /// </summary>
@@ -746,12 +1280,12 @@ namespace ConvertHelper
         /// <summary>
         /// Writes numbered OGG sample files for a normal sound archive.
         /// </summary>
-        private static void ConvertSampleSounds(Sound[] sounds, string targetPath, string index, float volume, DateTime updateTime)
+        private static void ConvertSampleSounds(Sound[] sounds, string targetPath, string index, float volume, DateTime updateTime, string outputFormat)
         {
-            targetPath = BuildSampleTargetPath(targetPath, index);
+            targetPath = BuildSampleTargetPath(targetPath, index, outputFormat);
             Parallel.For(0, sounds.Length, SampleEncodingParallelOptions, i =>
             {
-                EncodeSampleSound(sounds[i], i + 1, targetPath, volume, updateTime);
+                EncodeSampleSound(sounds[i], i + 1, targetPath, volume, updateTime, outputFormat);
             });
 
             SetDirectoryTimes(targetPath, updateTime);
@@ -760,10 +1294,10 @@ namespace ConvertHelper
         /// <summary>
         /// Encodes one numbered OGG sample file.
         /// </summary>
-        private static void EncodeSampleSound(Sound sound, int sampleIndex, string targetPath, float volume, DateTime updateTime)
+        private static void EncodeSampleSound(Sound sound, int sampleIndex, string targetPath, float volume, DateTime updateTime, string outputFormat)
         {
-            string sampleName = Util.ConvertToBMEString(sampleIndex, 4);
-            string output = Path.Combine(targetPath, sampleName + @".ogg");
+            string sampleName = GetSampleFileName(sampleIndex, outputFormat);
+            string output = Path.Combine(targetPath, sampleName);
             try
             {
                 ISoundEncoder encoder = new OggEncoder();
@@ -774,6 +1308,14 @@ namespace ConvertHelper
             {
                 throw new InvalidOperationException("Failed to encode sample " + sampleName + ".", e);
             }
+        }
+
+        /// <summary>
+        /// Returns the sample filename used by the selected output format.
+        /// </summary>
+        private static string GetSampleFileName(int sampleIndex, string outputFormat)
+        {
+            return Util.ConvertToBMEString(sampleIndex, 4) + @".ogg";
         }
 
         /// <summary>
@@ -790,11 +1332,18 @@ namespace ConvertHelper
         /// <summary>
         /// Creates and returns the output directory for numbered sample files.
         /// </summary>
-        private static string BuildSampleTargetPath(string targetPath, string index)
+        private static string BuildSampleTargetPath(string targetPath, string index, string outputFormat)
         {
-            targetPath += "\\sounds";
-            if (index != null)
-                targetPath += "_" + index;
+            if (IsBmsonOutput(outputFormat))
+            {
+                targetPath = Path.Combine(targetPath, Bmson.GetSoundFolder(index));
+            }
+            else
+            {
+                targetPath += "\\sounds";
+                if (index != null)
+                    targetPath += "_" + index;
+            }
 
             Common.SafeCreateDirectory(targetPath);
             return targetPath;

@@ -16,6 +16,8 @@
             config["BMS"].SetDefaultString("Players3", "DP");
             config["BMS"].SetDefaultString("MovieFolder", "");
             config["BMS"].SetDefaultString("Output", "");
+            config["BMS"].SetDefaultString("OutputFormat", "bms");
+            config["BMS"].SetDefaultBool("OptimizeBmsonSounds", false);
             config["BMS"].SetDefaultBool("IsSameFolderMovie", false);
             config["BMS"].SetDefaultBool("IsUseRenderAutoTip", false);
             config["BMS"].SetDefaultBool("ForceRenderAutoTip", false);

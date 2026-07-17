@@ -35,7 +35,7 @@ namespace Scharfrichter.Codec.Sounds
                 if (reader.Length > 0)
                 {
                     result.Data = new byte[reader.Length];
-                    reader.Read(result.Data, 0, result.Data.Length);
+                    reader.ReadExactly(result.Data, 0, result.Data.Length);
                     result.Format = reader.WaveFormat;
                 }
                 else

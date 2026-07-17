@@ -78,7 +78,7 @@ namespace Scharfrichter.Codec.Archives
                         WaveBankEntry entry = entries[i];
                         byte[] rawData = new byte[entry.PlayRegion.Length];
                         dataChunk.Position = entry.PlayRegion.Offset;
-                        dataChunk.Read(rawData, 0, rawData.Length);
+                        dataChunk.ReadExactly(rawData, 0, rawData.Length);
 
                         WaveFormat dataFormat;
                         switch (entry.Format.FormatTag)
@@ -90,7 +90,7 @@ namespace Scharfrichter.Codec.Archives
                                 dataFormat = WaveFormat.CreateCustomFormat(WaveFormatEncoding.DviAdpcm, entry.Format.SamplesPerSec, entry.Format.Channels, entry.Format.AvgBytesPerSec, entry.Format.BlockAlign, entry.Format.BitsPerSample);
                                 break;
                             case Constants.WavebankminiformatTagAdpcm:
-                                dataFormat = new AdpcmWaveFormat(entry.Format.SamplesPerSec, entry.Format.Channels, (short)entry.Format.BlockAlign, entry.Format.AvgBytesPerSec, (short)entry.Format.AdpcmSamplesPerBlock);
+                                dataFormat = new ScharfrichterAdpcmWaveFormat(entry.Format.SamplesPerSec, entry.Format.Channels, (short)entry.Format.BlockAlign, entry.Format.AvgBytesPerSec, (short)entry.Format.AdpcmSamplesPerBlock);
                                 //dataFormat = WaveFormat.CreateCustomFormat(WaveFormatEncoding.Adpcm, entry.Format.SamplesPerSec, entry.Format.Channels, entry.Format.AvgBytesPerSec, entry.Format.BlockAlign, entry.Format.BitsPerSample);
                                 break;
                             case Constants.WavebankminiformatTagWma:

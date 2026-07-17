@@ -38,7 +38,7 @@ namespace Scharfrichter.Codec.Archives
             bool foundChart = false;
             TwinkleChunk result = new TwinkleChunk();
             byte[] rawData = new byte[0x1A00000];
-            source.Read(rawData, 0, rawData.Length);
+            source.ReadExactly(rawData, 0, rawData.Length);
 
             using (MemoryStream mem = new MemoryStream(rawData))
             {

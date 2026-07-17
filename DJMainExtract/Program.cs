@@ -65,7 +65,7 @@ namespace DJMainExtract
             byte[] nameBytes = new byte[6];
 
             byte[] chunk0 = new byte[CHUNK_LENGTH];
-            fs.Read(chunk0, 0, CHUNK_LENGTH);
+            fs.ReadExactly(chunk0, 0, CHUNK_LENGTH);
             Array.Copy(chunk0, nameBytes, nameBytes.Length);
 
             Util.ByteSwapInPlace16(nameBytes);

@@ -51,7 +51,7 @@ namespace Scharfrichter.Codec.Sounds
                         bytesToRead = (int)wavStream.Length;
 
                         byte[] rawWaveData = new byte[bytesToRead];
-                        int bytesRead = wavStream.Read(rawWaveData, 0, bytesToRead);
+                        wavStream.ReadExactly(rawWaveData, 0, bytesToRead);
                         result.SetSound(rawWaveData, wavStream.WaveFormat);
 
                         // calculate output panning

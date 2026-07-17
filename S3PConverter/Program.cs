@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
+using Scharfrichter.Common;
 
 namespace S3PConverter
 {
@@ -24,11 +24,11 @@ namespace S3PConverter
         public void getMemData(int index, BinaryReader reader)
         {
             reader.BaseStream.Position = memStart;
-            byte[] extension = reader.ReadBytes(4);
+            reader.BaseStream.Position += 4;
             int start = reader.ReadInt32();
             reader.BaseStream.Position = memStart + start;
             byte[] readData = reader.ReadBytes(memLength - start);
-            File.WriteAllBytes("result\\" + ConvertToAlphabetString(index, 4, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") + @".wma", readData.ToArray());
+            File.WriteAllBytes("result\\" + ConvertToAlphabetString(index, 4, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") + @".wma", readData);
         }
 
         private string ConvertToAlphabetString(int value, int places, string alphabet)
@@ -103,27 +103,13 @@ namespace S3PConverter
                     s3vList.Add(s3vdata);
                 }
 
-                SafeCreateDirectory("result");
+                Common.SafeCreateDirectory("result");
                 for (int i = 0; i < count; i++)
                 {
                     s3vList[i].memEcho();
                     s3vList[i].getMemData(i + 1, reader);
                 }
             }
-        }
-
-        /// <summary>
-        /// Create folder if folder does not exist
-        /// </summary>
-        /// <param name="path"></param>
-        /// <returns></returns>
-        public static DirectoryInfo SafeCreateDirectory(string path)
-        {
-            if (Directory.Exists(path))
-            {
-                return null;
-            }
-            return Directory.CreateDirectory(path);
         }
     }
 }

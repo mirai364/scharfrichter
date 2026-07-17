@@ -1,6 +1,5 @@
-﻿using NAudio.Wave;
+using NAudio.Wave;
 using NReco.VideoConverter;
-using System;
 using System.IO;
 
 namespace Scharfrichter.Codec.Sounds.Encoders
@@ -15,57 +14,34 @@ namespace Scharfrichter.Codec.Sounds.Encoders
 
         public void EncodeToFile(Sound sound, string targetFile, float masterVolume)
         {
-            if (sound.Data == null || sound.Data.Length == 0) return;
-
-            // Generate a temporary file path for the intermediate WAV file
-            string tempWavPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".wav");
-
-            try
+            using (FileStream target = new FileStream(targetFile, FileMode.Create, FileAccess.Write))
             {
-                // 1. Export the sound data as a pristine temporary WAV using NAudio
-                byte[] finalData = sound.Render(masterVolume);
-                using (MemoryStream dataStream = new MemoryStream(finalData))
-                using (RawSourceWaveStream wavStream = new RawSourceWaveStream(dataStream, sound.Format))
-                {
-                    WaveFileWriter.CreateWaveFile(tempWavPath, wavStream);
-                }
-
-                // 2. Convert the intermediate WAV to FLAC using NReco.VideoConverter
-                // This completely bypasses Windows Media Foundation and avoids the 0xC00D36B4 error.
-                var ffmpeg = new FFMpegConverter();
-                ffmpeg.ConvertMedia(tempWavPath, targetFile, "flac");
-            }
-            finally
-            {
-                // Clean up the temporary WAV file to free up disk space
-                if (File.Exists(tempWavPath))
-                {
-                    File.Delete(tempWavPath);
-                }
+                Encode(sound, target, masterVolume);
+                target.Flush();
             }
         }
 
         public void Encode(Sound sound, Stream target, float masterVolume)
         {
-            // Generate a temporary file path for the FLAC output
-            string tempFlacPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".flac");
+            if (sound.Data == null || sound.Data.Length == 0) return;
 
-            try
+            byte[] wavData = CreateWaveData(sound, masterVolume);
+            using (MemoryStream inputStream = new MemoryStream(wavData))
             {
-                EncodeToFile(sound, tempFlacPath, masterVolume);
-
-                using (FileStream tempFileStream = new FileStream(tempFlacPath, FileMode.Open, FileAccess.Read))
-                {
-                    tempFileStream.CopyTo(target);
-                }
+                FFMpegConverter ffmpeg = new FFMpegConverter();
+                ffmpeg.ConvertLiveMedia(inputStream, "wav", target, "flac", new ConvertSettings());
             }
-            finally
+        }
+
+        private static byte[] CreateWaveData(Sound sound, float masterVolume)
+        {
+            byte[] finalData = sound.Render(masterVolume);
+            using (MemoryStream dataStream = new MemoryStream(finalData))
+            using (RawSourceWaveStream wavStream = new RawSourceWaveStream(dataStream, sound.Format))
+            using (MemoryStream wavData = new MemoryStream())
             {
-                // Clean up the temporary FLAC file
-                if (File.Exists(tempFlacPath))
-                {
-                    File.Delete(tempFlacPath);
-                }
+                WaveFileWriter.WriteWavFileToStream(wavData, wavStream);
+                return wavData.ToArray();
             }
         }
     }

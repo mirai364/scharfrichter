@@ -1,4 +1,4 @@
-﻿using Scharfrichter.Codec.Charts;
+using Scharfrichter.Codec.Charts;
 
 using System;
 using System.Collections.Generic;
@@ -20,15 +20,22 @@ namespace Scharfrichter.Codec.Archives
             BPMTable
         }
 
+        private const int MaxBmsObjectIndex = 1295;
         private Chart[] charts = new Chart[] { null };
         private int[] sampleMap;
         private Dictionary<int, int> reSampleMap = new Dictionary<int, int>();
 
+        /// <summary>
+        /// Initializes a BMS archive with the default one-to-one sample map.
+        /// </summary>
         public BMS()
         {
             ResetSampleMap();
         }
 
+        /// <summary>
+        /// Gets or sets the single chart stored by this BMS archive.
+        /// </summary>
         public override Chart[] Charts
         {
             get
@@ -42,6 +49,9 @@ namespace Scharfrichter.Codec.Archives
             }
         }
 
+        /// <summary>
+        /// Gets the number of charts currently stored in this archive.
+        /// </summary>
         public override int ChartCount
         {
             get
@@ -50,6 +60,9 @@ namespace Scharfrichter.Codec.Archives
             }
         }
 
+        /// <summary>
+        /// Calculates the BMS #TOTAL gauge value from the number of playable notes.
+        /// </summary>
         private int CalculateTotalGauge(int noteCount)
         {
             double gauge = 0;
@@ -74,12 +87,18 @@ namespace Scharfrichter.Codec.Archives
             return (int)Math.Floor(gauge);
         }
 
+        /// <summary>
+        /// Builds the sample map from the samples referenced by the current chart.
+        /// </summary>
         public void GenerateSampleMap()
         {
             int[] usedSamples = charts[0].UsedSamples();
             SampleMap = usedSamples;
         }
 
+        /// <summary>
+        /// Generates remapped #WAV tags for all samples that were written to BMS channels.
+        /// </summary>
         public bool GenerateReSampleTags(string keyset = "0", string rendarWavName = "")
         {
             Chart chart = charts[0];
@@ -95,7 +114,7 @@ namespace Scharfrichter.Codec.Archives
 
             foreach (KeyValuePair<int, int> pair in reSampleMap)
             {
-                if (pair.Value > 1293)
+                if (pair.Value >= MaxBmsObjectIndex)
                 {
                     Console.WriteLine("WARNING: More than 1293 samples");
                     return false;
@@ -111,6 +130,9 @@ namespace Scharfrichter.Codec.Archives
             return true;
         }
 
+        /// <summary>
+        /// Reads BMS text data from a stream and converts it into a chart archive.
+        /// </summary>
         static public BMS Read(Stream source)
         {
             List<KeyValuePair<string, string>> noteTags = new List<KeyValuePair<string, string>>();
@@ -289,6 +311,9 @@ namespace Scharfrichter.Codec.Archives
             return result;
         }
 
+        /// <summary>
+        /// Removes empty evenly-spaced slots from a BMS channel value array.
+        /// </summary>
         private static int[] Reduce(int[] source)
         {
             long[] primes = Util.Primes;
@@ -346,6 +371,9 @@ namespace Scharfrichter.Codec.Archives
             return result;
         }
 
+        /// <summary>
+        /// Resets the sample map so every BMS object index maps to the same sample index.
+        /// </summary>
         public void ResetSampleMap()
         {
             sampleMap = new int[1295];
@@ -355,6 +383,9 @@ namespace Scharfrichter.Codec.Archives
             }
         }
 
+        /// <summary>
+        /// Gets or sets the mapping from BMS object indexes to source sample indexes.
+        /// </summary>
         public int[] SampleMap
         {
             get
@@ -376,7 +407,10 @@ namespace Scharfrichter.Codec.Archives
             }
         }
 
-        private int getCommonDivisor(int value, int quantizeNotes)
+        /// <summary>
+        /// Calculates the largest divisor shared by a timing section and the chart quantization.
+        /// </summary>
+        private static int GetCommonDivisor(int value, int quantizeNotes)
         {
             if (value == 0) return quantizeNotes;
             int a = value;
@@ -391,145 +425,233 @@ namespace Scharfrichter.Codec.Archives
             return a;
         }
 
-        public bool Write(Stream target, bool enableBackspinScratch)
+        /// <summary>
+        /// Finds marker entries that should be emitted through LNTYPE 1 long-note channels.
+        /// </summary>
+        private static HashSet<Entry> BuildLongNoteEntrySet(Chart chart)
         {
-            int DelayPoint = 0;
-            bool idUseRenderAutoTip = false;
-            string commonBellPath = "";
-            Dictionary<int, Fraction> bpmMap = new Dictionary<int, Fraction>();
-            BinaryWriter writer = new BinaryWriter(target, Encoding.GetEncoding(932));
-            Chart chart = charts[0];
-            if (chart.Tags.ContainsKey("COMMONBELLPATH"))
+            HashSet<Entry> longNoteEntries = new HashSet<Entry>();
+            Dictionary<string, Entry> previousMarkers = new Dictionary<string, Entry>();
+            List<Entry> sortedEntries = new List<Entry>(chart.Entries);
+            sortedEntries.Sort();
+
+            foreach (Entry entry in sortedEntries)
             {
-                commonBellPath = chart.Tags["COMMONBELLPATH"];
+                if (entry.Type != EntryType.Marker || entry.Player <= 0)
+                    continue;
+
+                string key = entry.Player.ToString() + ":" + entry.Column.ToString();
+                if (entry.Freeze)
+                {
+                    Entry startEntry;
+                    if (previousMarkers.TryGetValue(key, out startEntry))
+                        longNoteEntries.Add(startEntry);
+                    longNoteEntries.Add(entry);
+                    previousMarkers.Remove(key);
+                }
+                else
+                {
+                    previousMarkers[key] = entry;
+                }
             }
 
-            MemoryStream header = new MemoryStream();
-            MemoryStream expansion = new MemoryStream();
-            MemoryStream body = new MemoryStream();
+            return longNoteEntries;
+        }
 
-            StreamWriter headerWriter = new StreamWriter(header);
-            StreamWriter expansionWriter = new StreamWriter(expansion);
-            StreamWriter bodyWriter = new StreamWriter(body);
+        /// <summary>
+        /// Determines whether a BMS channel string belongs to an LNTYPE 1 long-note lane.
+        /// </summary>
+        private static bool IsLongNoteLane(string laneString)
+        {
+            if (laneString.Length != 2)
+                return false;
 
-            // note count header. this can assist people tagging.
-            headerWriter.WriteLine("; 1P = " + chart.NoteCount(1).ToString());
-            headerWriter.WriteLine("; 2P = " + chart.NoteCount(2).ToString());
-            headerWriter.WriteLine("");
-            headerWriter.WriteLine("");
-            headerWriter.WriteLine("* ----------------------HEADER FIELD");
-            headerWriter.WriteLine("");
+            char laneGroup = laneString[0];
+            return laneGroup == '5' || laneGroup == '6';
+        }
 
-            // create BPM metadata
+        /// <summary>
+        /// Registers a fractional BPM or STOP value and returns its BMS table index.
+        /// </summary>
+        private static int RegisterValue(Dictionary<int, Fraction> valueMap, Fraction value)
+        {
+            foreach (KeyValuePair<int, Fraction> entry in valueMap)
+            {
+                if (entry.Value == value)
+                    return entry.Key;
+            }
+
+            int index = valueMap.Count + 1;
+            if (index % 36 == 10)
+                index += 26;
+            valueMap[index] = value;
+            return index;
+        }
+
+        /// <summary>
+        /// Writes a BMS header tag and applies quoting when the value requires it.
+        /// </summary>
+        private static void WriteHeaderTag(StreamWriter writer, string key, string value)
+        {
+            if (value != null && value.Length > 0)
+                writer.WriteLine("#" + key + " " + FormatHeaderValue(key, value));
+            else
+                writer.WriteLine("#" + key);
+        }
+
+        /// <summary>
+        /// Formats a header value so text fields remain parseable by BMS readers.
+        /// </summary>
+        private static string FormatHeaderValue(string key, string value)
+        {
+            if (!IsTextHeaderTag(key) || !NeedsQuotedHeaderValue(value))
+                return value;
+
+            return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        }
+
+        /// <summary>
+        /// Determines whether a header key represents free text that may need quoting.
+        /// </summary>
+        private static bool IsTextHeaderTag(string key)
+        {
+            switch (key.ToUpperInvariant())
+            {
+                case "TITLE":
+                case "SUBTITLE":
+                case "ARTIST":
+                case "SUBARTIST":
+                case "GENRE":
+                case "COMMENT":
+                case "MAKER":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Determines whether a header value contains characters that should be quoted.
+        /// </summary>
+        private static bool NeedsQuotedHeaderValue(string value)
+        {
+            return value.Contains("//") || value.Contains("/*") || value.Contains("*/") || value.Contains("\"") || value.Contains("\\");
+        }
+
+        /// <summary>
+        /// Writes the comment header and the beginning of the BMS header field.
+        /// </summary>
+        private static void WriteInitialHeader(StreamWriter writer, Chart chart)
+        {
+            writer.WriteLine("; 1P = " + chart.NoteCount(1).ToString());
+            writer.WriteLine("; 2P = " + chart.NoteCount(2).ToString());
+            writer.WriteLine("");
+            writer.WriteLine("");
+            writer.WriteLine("* ----------------------HEADER FIELD");
+            writer.WriteLine("");
+        }
+
+        /// <summary>
+        /// Normalizes generated header tags that must be controlled by the writer.
+        /// </summary>
+        private static void PrepareGeneratedHeaderTags(Chart chart, bool useLongNoteChannels)
+        {
             chart.Tags["BPM"] = Math.Round((double)(chart.DefaultBPM), 3).ToString();
-            // write all metadata
-            chart.Tags["LNOBJ"] = "ZZ";
+            chart.Tags.Remove("LNOBJ");
+            chart.Tags.Remove("LNTYPE");
+            if (useLongNoteChannels)
+                chart.Tags["LNTYPE"] = "1";
+        }
 
-            // EXPANSION FIELD
-            expansionWriter.WriteLine("");
-            expansionWriter.WriteLine("");
-            expansionWriter.WriteLine("*---------------------- EXPANSION FIELD");
+        /// <summary>
+        /// Writes expansion metadata such as gauge total and preview audio.
+        /// </summary>
+        private void WriteExpansionHeader(StreamWriter writer, Chart chart)
+        {
+            writer.WriteLine("");
+            writer.WriteLine("");
+            writer.WriteLine("*---------------------- EXPANSION FIELD");
             int noteCount = chart.NoteCount(1) + chart.NoteCount(2);
             double gauge = CalculateTotalGauge(noteCount);
-            expansionWriter.WriteLine("#TOTAL " + gauge);
+            writer.WriteLine("#TOTAL " + gauge);
+            writer.WriteLine("#PREVIEW preview.ogg");
+        }
 
-            expansionWriter.WriteLine("#PREVIEW preview.ogg");
-            if (chart.Tags.ContainsKey("VIDEO") && chart.useMovie)
+        /// <summary>
+        /// Writes BMS movie tags and emits the preload BGA event used for video delay.
+        /// </summary>
+        private static void WriteVideoTagsAndDelay(Chart chart, StreamWriter expansionWriter, StreamWriter bodyWriter, ref int delayPoint)
+        {
+            if (!chart.Tags.ContainsKey("VIDEO") || !chart.useMovie)
+                return;
+
+            string bga = chart.Tags["VIDEO"];
+            string[] extensions = { ".wmv", ".mp4" };
+            foreach (string extension in extensions)
             {
-                string BGA = chart.Tags["VIDEO"];
-                string[] extensions = { ".wmv", ".mp4" };
-                foreach (string extension in extensions)
+                string movieFile = chart.movieFolder + bga + extension;
+                if (File.Exists(movieFile))
                 {
-                    string movieFile = chart.movieFolder + BGA + extension;
-                    if (File.Exists(movieFile))
-                    {
-                        if (chart.isSameFolderMovie)
-                        {
-                            expansionWriter.WriteLine("#BMP01 " + BGA + extension);
-                        }
-                        else
-                        {
-                            expansionWriter.WriteLine("#BMP01 ..\\..\\movie\\" + BGA + extension);
-                        }
-                    }
-                }
-                if (chart.Tags.ContainsKey("VIDEODELAY"))
-                {
-                    double videoDelay = Int32.Parse(chart.Tags["VIDEODELAY"]);
-                    int section = 0;
-                    double BPM = Math.Round((double)(chart.DefaultBPM), 3);
-                    if (videoDelay < 0)
-                    {
-                        section = (int)Math.Round(BPM * videoDelay / chart.quantizeNotes * (chart.quantizeNotes / 192.0f) * 2.25f * 1.3125f, MidpointRounding.AwayFromZero) + chart.quantizeNotes * 2;
-                        DelayPoint = 2;
-                        if (section >= chart.quantizeNotes)
-                        {
-                            section -= chart.quantizeNotes;
-                            DelayPoint = 1;
-                        }
-                    }
-                    else
-                    {
-                        section = (int)Math.Round(BPM * videoDelay / chart.quantizeNotes * (chart.quantizeNotes / 192.0f) * 2.25f, MidpointRounding.AwayFromZero);
-                    }
-                    string BGAstringData = "#00004:";
-                    int commonDivisor = getCommonDivisor(section, chart.quantizeNotes);
-                    int num = chart.quantizeNotes / commonDivisor;
-                    int sec = section;
-                    if (section != 0) sec = section / commonDivisor;
-                    for (int i = 0; i < num; i++)
-                    {
-                        if (sec == i)
-                        {
-                            BGAstringData += "01";
-                        }
-                        else
-                        {
-                            BGAstringData += "00";
-                        }
-
-                    }
-                    bodyWriter.WriteLine(BGAstringData);
+                    string bgaPath = chart.isSameFolderMovie ? bga + extension : "..\\..\\movie\\" + bga + extension;
+                    expansionWriter.WriteLine("#BMP01 " + bgaPath);
+                    expansionWriter.WriteLine("#VIDEOFILE " + bgaPath);
+                    expansionWriter.WriteLine("#MOVIE " + bgaPath);
                 }
             }
-            expansionWriter.WriteLine("");
-            expansionWriter.WriteLine("");
 
-            if (chart.Tags.ContainsKey("ISUSERENDERAUTOTIP"))
+            if (!chart.Tags.ContainsKey("VIDEODELAY"))
+                return;
+
+            double videoDelay = Int32.Parse(chart.Tags["VIDEODELAY"]);
+            expansionWriter.WriteLine("#VIDEODLY " + videoDelay.ToString());
+            int section = 0;
+            double bpm = Math.Round((double)(chart.DefaultBPM), 3);
+            if (videoDelay < 0)
             {
-                idUseRenderAutoTip = System.Convert.ToBoolean(chart.Tags["ISUSERENDERAUTOTIP"]);
+                section = (int)Math.Round(bpm * videoDelay / chart.quantizeNotes * (chart.quantizeNotes / 192.0f) * 2.25f * 1.3125f, MidpointRounding.AwayFromZero) + chart.quantizeNotes * 2;
+                delayPoint = 2;
+                if (section >= chart.quantizeNotes)
+                {
+                    section -= chart.quantizeNotes;
+                    delayPoint = 1;
+                }
             }
-            chart.ClearUsed();
-
-            // iterate through all events
-            int currentMeasure = 0;
-            int currentOperation = 0;
-            int measureCount = chart.Measures;
-            int bpmCount = 0;
-            bool repeat = false;
-            List<Entry> measureEntries = new List<Entry>();
-            List<Entry> entries = new List<Entry>();
-            EntryType currentType = EntryType.Invalid;
-            int currentColumn = -1;
-            int currentPlayer = -1;
-            string laneString = "";
-            string measureString = "";
-            string rendarWavName = "";
-            if (idUseRenderAutoTip)
+            else
             {
-                reSampleMap.Add(1, 0);
-                int tmpCurrentMeasure = currentMeasure + DelayPoint;
-                measureString = tmpCurrentMeasure.ToString();
-                while (measureString.Length < 3)
-                    measureString = "0" + measureString;
-                bodyWriter.WriteLine("#" + measureString + "01:01");
-                measureString = "";
-                rendarWavName = "0001-" + chart.Tags["PLAYER"] + chart.Tags["DIFFICULTY"];
+                section = (int)Math.Round(bpm * videoDelay / chart.quantizeNotes * (chart.quantizeNotes / 192.0f) * 2.25f, MidpointRounding.AwayFromZero);
             }
 
+            string bgaStringData = "#00004:";
+            int commonDivisor = GetCommonDivisor(section, chart.quantizeNotes);
+            int num = chart.quantizeNotes / commonDivisor;
+            int sec = section;
+            if (section != 0)
+                sec = section / commonDivisor;
+            for (int i = 0; i < num; i++)
+            {
+                bgaStringData += sec == i ? "01" : "00";
+            }
 
-            // MSS Support
-            // NOTE: Please change it when it is officially supported by bms
+            bodyWriter.WriteLine(bgaStringData);
+        }
+
+        /// <summary>
+        /// Writes the optional render auto tip preview event and returns the generated WAV tag prefix.
+        /// </summary>
+        private static string WriteRenderAutoTipPreview(Chart chart, StreamWriter bodyWriter, int measure)
+        {
+            if (!chart.Tags.ContainsKey("ISUSERENDERAUTOTIP") || !System.Convert.ToBoolean(chart.Tags["ISUSERENDERAUTOTIP"]))
+                return "";
+
+            bodyWriter.WriteLine("#" + FormatMeasureNumber(measure) + "01:01");
+            return "0001-" + chart.Tags["PLAYER"] + chart.Tags["DIFFICULTY"];
+        }
+
+        /// <summary>
+        /// Applies the legacy MSS conversion that keeps very short scratch spans representable in BMS.
+        /// </summary>
+        private static void ApplyMssSupport(Chart chart)
+        {
             List<Entry> newList = new List<Entry>();
             List<Entry> mssList = new List<Entry>();
             foreach (Entry entry in chart.Entries)
@@ -569,299 +691,39 @@ namespace Scharfrichter.Codec.Archives
                 chart.Entries = newList;
                 chart.CalculateMetricOffsets();
             }
+        }
 
-
-            while (currentMeasure < measureCount)
+        /// <summary>
+        /// Copies entries for one measure into a reusable buffer.
+        /// </summary>
+        private static void CollectMeasureEntries(Chart chart, int currentMeasure, List<Entry> measureEntries)
+        {
+            measureEntries.Clear();
+            foreach (Entry entry in chart.Entries)
             {
-                bool write = false;
-
-                if (!repeat)
-                {
-                    entries.Clear();
-                    currentType = EntryType.Invalid;
-                    currentColumn = 0;
-                    currentPlayer = 0;
-                    laneString = "00";
-
-                    switch (currentOperation)
-                    {
-                        case 00:
-                            measureEntries.Clear();
-
-                            int tmpCurrentMeasure = currentMeasure + DelayPoint;
-                            measureString = tmpCurrentMeasure.ToString();
-                            while (measureString.Length < 3)
-                                measureString = "0" + measureString;
-
-                            foreach (Entry entry in chart.Entries)
-                            {
-                                if (entry.MetricMeasure == currentMeasure)
-                                    measureEntries.Add(entry);
-                                else if (entry.MetricMeasure > currentMeasure)
-                                    break;
-                            }
-
-                            break;
-                        case 01: currentType = EntryType.Tempo; currentPlayer = 0; currentColumn = 0; laneString = "08"; break;
-                        case 02: currentType = EntryType.BGA; currentPlayer = 0; currentColumn = 0; laneString = "04"; break;
-                        case 03: currentType = EntryType.BGA; currentPlayer = 0; currentColumn = 1; laneString = "05"; break;
-                        case 04: currentType = EntryType.BGA; currentPlayer = 0; currentColumn = 2; laneString = "06"; break;
-                        case 05: currentType = EntryType.BGA; currentPlayer = 0; currentColumn = 3; laneString = "07"; break;
-                        case 06: currentType = EntryType.Marker; currentPlayer = 0; currentColumn = 0; laneString = "01"; break;
-                        case 07: currentOperation++; continue; // placeholders
-                        case 08: currentOperation++; continue;
-                        case 09: currentOperation++; continue;
-                        case 10: currentType = EntryType.Marker; currentPlayer = 1; currentColumn = 0; laneString = "11"; break;
-                        case 11: currentType = EntryType.Marker; currentPlayer = 1; currentColumn = 1; laneString = "12"; break;
-                        case 12: currentType = EntryType.Marker; currentPlayer = 1; currentColumn = 2; laneString = "13"; break;
-                        case 13: currentType = EntryType.Marker; currentPlayer = 1; currentColumn = 3; laneString = "14"; break;
-                        case 14: currentType = EntryType.Marker; currentPlayer = 1; currentColumn = 4; laneString = "15"; break;
-                        case 15: currentType = EntryType.Marker; currentPlayer = 1; currentColumn = 5; laneString = "18"; break;
-                        case 16: currentType = EntryType.Marker; currentPlayer = 1; currentColumn = 6; laneString = "19"; break;
-                        case 17: currentType = EntryType.Marker; currentPlayer = 1; currentColumn = 7; laneString = "16"; break;
-                        case 18: currentType = EntryType.Marker; currentPlayer = 1; currentColumn = 8; laneString = "17"; break;
-                        case 19: currentType = EntryType.Marker; currentPlayer = 2; currentColumn = 0; laneString = "21"; break;
-                        case 20: currentType = EntryType.Marker; currentPlayer = 2; currentColumn = 1; laneString = "22"; break;
-                        case 21: currentType = EntryType.Marker; currentPlayer = 2; currentColumn = 2; laneString = "23"; break;
-                        case 22: currentType = EntryType.Marker; currentPlayer = 2; currentColumn = 3; laneString = "24"; break;
-                        case 23: currentType = EntryType.Marker; currentPlayer = 2; currentColumn = 4; laneString = "25"; break;
-                        case 24: currentType = EntryType.Marker; currentPlayer = 2; currentColumn = 5; laneString = "28"; break;
-                        case 25: currentType = EntryType.Marker; currentPlayer = 2; currentColumn = 6; laneString = "29"; break;
-                        case 26: currentType = EntryType.Marker; currentPlayer = 2; currentColumn = 7; laneString = "26"; break;
-                        case 27: currentType = EntryType.Marker; currentPlayer = 2; currentColumn = 8; laneString = "27"; break;
-                        default: currentOperation = 0; currentMeasure++; continue;
-                    }
-
-                    // separate events we'll use
-                    foreach (Entry entry in measureEntries)
-                    {
-                        if (entry.MetricMeasure == currentMeasure &&
-                            entry.Player == currentPlayer &&
-                            entry.Type == currentType &&
-                            entry.Column == currentColumn &&
-                            !entry.Used)
-                        {
-                            entries.Add(entry);
-
-#if (false)
-                            // a little hack for backspin scratches
-                            if (enableBackspinScratch && entry.Column == 7 && entry.Type == EntryType.Marker && entry.Freeze == true)
-                            {
-                                Entry backspinEntry = new Entry();
-                                backspinEntry.Column = entry.Column;
-                                backspinEntry.Freeze = false;
-                                backspinEntry.MetricMeasure = entry.MetricMeasure;
-                                backspinEntry.MetricOffset = entry.MetricOffset;
-                                backspinEntry.Parameter = 0;
-                                backspinEntry.Player = entry.Player;
-                                backspinEntry.Type = EntryType.Marker;
-                                backspinEntry.Used = false;
-                                backspinEntry.Value = new Fraction(1295, 1);
-                                entries.Add(backspinEntry);
-                            }
-#endif
-                        }
-                    }
-                }
-
-                repeat = false;
-
-                // build a line if necessary
-                if (entries.Count > 0)
-                {
-                    // get common denominator
-                    long common = 1;
-
-                    for (int i = 0; i < 2; i++)
-                    {
-                        foreach (Entry entry in entries)
-                        {
-                            if (common % entry.MetricOffset.Denominator != 0 && common <= int.MaxValue)
-                            {
-                                common *= entry.MetricOffset.Denominator;
-                            }
-                        }
-                    }
-
-                    // prevent outrageous common denominator values here
-                    long commonDivisor = 1;
-                    long divisorLimit;
-
-                    // use reasonable quantization to prevent crazy values
-                    divisorLimit = 7680;
-
-                    while (true)
-                    {
-                        if ((common / commonDivisor) <= divisorLimit)
-                            break;
-                        commonDivisor *= 2;
-                    }
-
-                    // build line
-                    int[] values = new int[common / commonDivisor];
-
-                    if (currentType == EntryType.Marker && currentPlayer != 0)
-                    {
-                        // player key
-                        foreach (Entry entry in entries)
-                        {
-                            long multiplier = common / entry.MetricOffset.Denominator;
-                            long offset = (entry.MetricOffset.Numerator * multiplier) / commonDivisor;
-                            int count = values.Length;
-                            int entryMapIndex = (int)(double)entry.Value;
-
-                            if (!reSampleMap.ContainsKey(entryMapIndex))
-                                reSampleMap.Add(entryMapIndex, reSampleMap.Count());
-                            reSampleMap.TryGetValue(entryMapIndex, out entryMapIndex);
-                            ++entryMapIndex;
-
-                            if (offset >= 0 && offset < count && !entry.Used)
-                            {
-                                if (values[offset] != 0)
-                                {
-                                    repeat = true;
-                                }
-                                else
-                                {
-                                    if (entry.Freeze)
-                                        values[offset] = 1295;
-                                    else
-                                        values[offset] = entryMapIndex;
-                                    write = true;
-                                    entry.Used = true;
-                                }
-                            }
-                        }
-                    }
-                    else if (currentType == EntryType.Marker && currentPlayer == 0)
-                    {
-                        // bgm
-                        foreach (Entry entry in entries)
-                        {
-                            long multiplier = common / entry.MetricOffset.Denominator;
-                            long offset = (entry.MetricOffset.Numerator * multiplier) / commonDivisor;
-                            int count = values.Length;
-                            int entryMapIndex = (int)(double)entry.Value;
-
-                            if (!reSampleMap.ContainsKey(entryMapIndex))
-                                reSampleMap.Add(entryMapIndex, reSampleMap.Count());
-                            reSampleMap.TryGetValue(entryMapIndex, out entryMapIndex);
-                            ++entryMapIndex;
-
-                            if (offset >= 0 && offset < count && !entry.Used)
-                            {
-                                if (values[offset] == 0)
-                                {
-                                    values[offset] = entryMapIndex;
-                                    entry.Used = true;
-                                    write = true;
-                                }
-                                else
-                                {
-                                    repeat = true;
-                                }
-                            }
-                        }
-                    }
-                    else if (currentType == EntryType.Tempo)
-                    {
-                        foreach (Entry entry in entries)
-                        {
-                            long multiplier = common / entry.MetricOffset.Denominator;
-                            long offset = (entry.MetricOffset.Numerator * multiplier) / commonDivisor;
-                            //long offset = (entry.MetricOffset.Numerator * common) / entry.MetricOffset.Denominator;
-                            int count = values.Length;
-
-                            if (offset >= 0 && offset < count && !entry.Used)
-                            {
-                                if (values[offset] == 0)
-                                {
-                                    int entryIndex = -1;
-
-                                    foreach (KeyValuePair<int, Fraction> bpmEntry in bpmMap)
-                                    {
-                                        if (bpmEntry.Value == entry.Value)
-                                        {
-                                            entryIndex = bpmEntry.Key;
-                                            break;
-                                        }
-                                    }
-
-                                    if (entryIndex <= 0)
-                                    {
-                                        bpmCount++;
-
-                                        // this is a hack to make the numbers decimal
-                                        if (bpmCount % 36 == 10)
-                                            bpmCount += 26;
-
-                                        headerWriter.WriteLine("#BPM" + Util.ConvertToBMEString(bpmCount, 2) + " " + (Math.Round((double)(entry.Value), 3)).ToString());
-                                        entryIndex = bpmCount;
-                                        bpmMap[entryIndex] = entry.Value;
-                                    }
-                                    values[offset] = entryIndex;
-                                    entry.Used = true;
-                                    write = true;
-                                }
-                                else
-                                {
-                                    repeat = true;
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        foreach (Entry entry in entries)
-                        {
-                            long multiplier = common / entry.MetricOffset.Denominator;
-                            long offset = (entry.MetricOffset.Numerator * multiplier) / commonDivisor;
-                            //long offset = (entry.MetricOffset.Numerator * common) / entry.MetricOffset.Denominator;
-                            int count = values.Length;
-
-                            if (offset >= 0 && offset < count && !entry.Used)
-                            {
-                                if (values[offset] == 0)
-                                {
-                                    values[offset] = (int)(entry.Value.Numerator / entry.Value.Denominator);
-                                    entry.Used = true;
-                                    write = true;
-                                }
-                                else
-                                {
-                                    repeat = true;
-                                }
-                            }
-                        }
-                    }
-
-                    if (write)
-                    {
-                        StringBuilder builder = new StringBuilder();
-                        values = Reduce(values);
-                        int length = values.Length;
-                        builder.Append("#" + measureString + laneString + ":");
-
-                        for (int i = 0; i < length; i++)
-                        {
-                            builder.Append(Util.ConvertToBMEString(values[i], 2));
-                        }
-
-                        bodyWriter.WriteLine(builder.ToString());
-                    }
-                }
-
-                if (!repeat)
-                    currentOperation++;
+                if (entry.MetricMeasure == currentMeasure)
+                    measureEntries.Add(entry);
+                else if (entry.MetricMeasure > currentMeasure)
+                    break;
             }
+        }
 
-            string keyset = "0";
-            if (chart.Tags.ContainsKey("KEYSET"))
-                keyset = chart.Tags["KEYSET"];
-            bool isSucces = GenerateReSampleTags(keyset, rendarWavName);
-            if (!isSucces)
-                return false;
+        /// <summary>
+        /// Formats a BMS measure number as a three-digit string.
+        /// </summary>
+        private static string FormatMeasureNumber(int measure)
+        {
+            string measureString = measure.ToString();
+            while (measureString.Length < 3)
+                measureString = "0" + measureString;
+            return measureString;
+        }
 
+        /// <summary>
+        /// Writes chart tags after generated WAV/BMP/BPM/STOP metadata has been prepared.
+        /// </summary>
+        private static void WriteChartHeaderTags(StreamWriter headerWriter, Chart chart, string commonBellPath)
+        {
             foreach (KeyValuePair<string, string> tag in chart.Tags)
             {
                 if (tag.Value != null && tag.Value.Length > 0)
@@ -870,37 +732,40 @@ namespace Scharfrichter.Codec.Archives
                         continue;
                     if (commonBellPath != "" && tag.Value.Contains("0000.ogg"))
                     {
-                        headerWriter.WriteLine("#" + tag.Key + " " + commonBellPath);
+                        WriteHeaderTag(headerWriter, tag.Key, commonBellPath);
                         continue;
                     }
 
-                    headerWriter.WriteLine("#" + tag.Key + " " + tag.Value);
+                    WriteHeaderTag(headerWriter, tag.Key, tag.Value);
                 }
                 else
                 {
-                    headerWriter.WriteLine("#" + tag.Key);
+                    WriteHeaderTag(headerWriter, tag.Key, null);
                 }
             }
+        }
 
-            expansionWriter.WriteLine("*---------------------- MAIN DATA FIELD");
-            expansionWriter.WriteLine("");
-            expansionWriter.WriteLine("");
-            // write measure lengths
+        /// <summary>
+        /// Writes non-standard measure lengths while applying any video delay offset.
+        /// </summary>
+        private static void WriteMeasureLengths(StreamWriter writer, Chart chart, int delayPoint)
+        {
             foreach (KeyValuePair<int, Fraction> ml in chart.MeasureLengths)
             {
                 if ((double)ml.Value != 1)
                 {
-                    int tmpCurrentMeasure = ml.Key + DelayPoint;
-                    string line = tmpCurrentMeasure.ToString();
-                    while (line.Length < 3)
-                        line = "0" + line;
-
+                    string line = FormatMeasureNumber(ml.Key + delayPoint);
                     line = "#" + line + "02:" + ((double)ml.Value).ToString();
-                    expansionWriter.WriteLine(line);
+                    writer.WriteLine(line);
                 }
             }
+        }
 
-            // finalize data and dump to stream
+        /// <summary>
+        /// Flushes the buffered BMS sections to the target stream in header, expansion, and body order.
+        /// </summary>
+        private static void FlushBmsOutput(BinaryWriter writer, StreamWriter headerWriter, StreamWriter expansionWriter, StreamWriter bodyWriter, MemoryStream header, MemoryStream expansion, MemoryStream body)
+        {
             headerWriter.Flush();
             expansionWriter.Flush();
             bodyWriter.Flush();
@@ -908,6 +773,418 @@ namespace Scharfrichter.Codec.Archives
             writer.Write(expansion.ToArray());
             writer.Write(body.ToArray());
             writer.Flush();
+        }
+
+        private struct BmsLaneDefinition
+        {
+            public EntryType Type;
+            public int Player;
+            public int Column;
+            public string Lane;
+        }
+
+        /// <summary>
+        /// Determines whether an operation index is a reserved placeholder channel.
+        /// </summary>
+        private static bool IsSkippedLaneOperation(int operation)
+        {
+            return operation == 8 || operation == 9;
+        }
+
+        /// <summary>
+        /// Converts the BMS writer operation index into an entry filter and channel string.
+        /// </summary>
+        private static bool TryGetBmsLaneDefinition(int operation, out BmsLaneDefinition lane)
+        {
+            lane = new BmsLaneDefinition() { Type = EntryType.Invalid, Player = 0, Column = 0, Lane = "00" };
+            if (operation == 1)
+                return SetLane(out lane, EntryType.Tempo, 0, 0, "08");
+            if (operation == 2)
+                return SetLane(out lane, EntryType.Stop, 0, 0, "09");
+            if (operation >= 3 && operation <= 6)
+                return SetLane(out lane, EntryType.BGA, 0, operation - 3, GetBgaLane(operation - 3));
+            if (operation == 7)
+                return SetLane(out lane, EntryType.Marker, 0, 0, "01");
+            if (operation >= 10 && operation <= 45)
+                return TryGetPlayerMarkerLane(operation, out lane);
+            return false;
+        }
+
+        /// <summary>
+        /// Creates a BMS lane definition value.
+        /// </summary>
+        private static bool SetLane(out BmsLaneDefinition lane, EntryType type, int player, int column, string laneString)
+        {
+            lane = new BmsLaneDefinition() { Type = type, Player = player, Column = column, Lane = laneString };
+            return true;
+        }
+
+        /// <summary>
+        /// Gets the BMS BGA channel used by the internal BGA column.
+        /// </summary>
+        private static string GetBgaLane(int column)
+        {
+            string[] lanes = { "04", "06", "07", "0A" };
+            return lanes[column];
+        }
+
+        /// <summary>
+        /// Converts player marker operation indexes into visible or long-note lane definitions.
+        /// </summary>
+        private static bool TryGetPlayerMarkerLane(int operation, out BmsLaneDefinition lane)
+        {
+            int group = (operation - 10) / 9;
+            int index = (operation - 10) % 9;
+            int player = (group % 2) + 1;
+            bool longNote = group >= 2;
+            int[] columns = { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+            string[] visible1P = { "11", "12", "13", "14", "15", "18", "19", "16", "17" };
+            string[] visible2P = { "21", "22", "23", "24", "25", "28", "29", "26", "27" };
+            string[] long1P = { "51", "52", "53", "54", "55", "58", "59", "56", "57" };
+            string[] long2P = { "61", "62", "63", "64", "65", "68", "69", "66", "67" };
+            string laneString = SelectPlayerLane(player, longNote, index, visible1P, visible2P, long1P, long2P);
+            return SetLane(out lane, EntryType.Marker, player, columns[index], laneString);
+        }
+
+        /// <summary>
+        /// Selects the BMS channel string for a player marker lane.
+        /// </summary>
+        private static string SelectPlayerLane(int player, bool longNote, int index, string[] visible1P, string[] visible2P, string[] long1P, string[] long2P)
+        {
+            if (player == 1)
+                return longNote ? long1P[index] : visible1P[index];
+            return longNote ? long2P[index] : visible2P[index];
+        }
+
+        /// <summary>
+        /// Adds entries from the current measure that match the selected BMS lane.
+        /// </summary>
+        private static void CollectMatchingLaneEntries(List<Entry> measureEntries, List<Entry> entries, int currentMeasure, BmsLaneDefinition lane, bool useLongNoteChannels, HashSet<Entry> longNoteEntries)
+        {
+            foreach (Entry entry in measureEntries)
+            {
+                if (entry.MetricMeasure == currentMeasure && entry.Player == lane.Player && entry.Type == lane.Type && entry.Column == lane.Column && !entry.Used)
+                {
+                    if (ShouldSkipForLongNoteLane(entry, lane.Lane, useLongNoteChannels, longNoteEntries))
+                        continue;
+                    entries.Add(entry);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Determines whether an entry belongs to the opposite visible/long-note lane family.
+        /// </summary>
+        private static bool ShouldSkipForLongNoteLane(Entry entry, string laneString, bool useLongNoteChannels, HashSet<Entry> longNoteEntries)
+        {
+            if (!useLongNoteChannels || entry.Type != EntryType.Marker || entry.Player <= 0)
+                return false;
+            bool isLongNoteLane = IsLongNoteLane(laneString);
+            bool isLongNoteEntry = longNoteEntries.Contains(entry);
+            return isLongNoteLane != isLongNoteEntry;
+        }
+        /// <summary>
+        /// Writes one BMS channel line for the selected lane entries and reports collisions that need a repeat pass.
+        /// </summary>
+        private bool WriteLaneEntries(List<Entry> entries, EntryType currentType, int currentPlayer, string laneString, string measureString, Dictionary<int, Fraction> bpmMap, Dictionary<int, Fraction> stopMap, StreamWriter headerWriter, StreamWriter bodyWriter, ref int bpmCount)
+        {
+            long common = GetCommonDenominator(entries);
+            long commonDivisor = GetLimitedCommonDivisor(common, 7680);
+            int[] values = new int[common / commonDivisor];
+            bool repeat = false;
+            bool write = FillLaneValues(values, entries, currentType, common, commonDivisor, bpmMap, stopMap, headerWriter, ref bpmCount, ref repeat);
+            if (write)
+                WriteBmsChannelLine(bodyWriter, measureString, laneString, values);
+            return repeat;
+        }
+
+        /// <summary>
+        /// Finds the shared denominator needed to represent all entry offsets in a BMS channel.
+        /// </summary>
+        private static long GetCommonDenominator(List<Entry> entries)
+        {
+            long common = 1;
+            for (int i = 0; i < 2; i++)
+                foreach (Entry entry in entries)
+                    if (common % entry.MetricOffset.Denominator != 0 && common <= int.MaxValue)
+                        common *= entry.MetricOffset.Denominator;
+            return common;
+        }
+
+        /// <summary>
+        /// Calculates a divisor that keeps generated channel arrays within a practical length.
+        /// </summary>
+        private static long GetLimitedCommonDivisor(long common, long divisorLimit)
+        {
+            long commonDivisor = 1;
+            while ((common / commonDivisor) > divisorLimit)
+                commonDivisor *= 2;
+            return commonDivisor;
+        }
+
+        /// <summary>
+        /// Fills the channel value array for marker, STOP, BPM, or raw BMS entries.
+        /// </summary>
+        private bool FillLaneValues(int[] values, List<Entry> entries, EntryType currentType, long common, long commonDivisor, Dictionary<int, Fraction> bpmMap, Dictionary<int, Fraction> stopMap, StreamWriter headerWriter, ref int bpmCount, ref bool repeat)
+        {
+            if (currentType == EntryType.Marker)
+                return FillMarkerValues(values, entries, common, commonDivisor, ref repeat);
+            if (currentType == EntryType.Stop)
+                return FillStopValues(values, entries, common, commonDivisor, stopMap, headerWriter, ref repeat);
+            if (currentType == EntryType.Tempo)
+                return FillTempoValues(values, entries, common, commonDivisor, bpmMap, headerWriter, ref bpmCount, ref repeat);
+            return FillRawValues(values, entries, common, commonDivisor, ref repeat);
+        }
+
+        /// <summary>
+        /// Fills sample marker values and registers their remapped #WAV indexes.
+        /// </summary>
+        private bool FillMarkerValues(int[] values, List<Entry> entries, long common, long commonDivisor, ref bool repeat)
+        {
+            bool write = false;
+            foreach (Entry entry in entries)
+            {
+                int offset = GetValueOffset(entry, common, commonDivisor);
+                int entryMapIndex = RegisterSampleValue((int)(double)entry.Value);
+                if (TryPlaceValue(values, offset, entryMapIndex, entry, ref repeat))
+                    write = true;
+            }
+            return write;
+        }
+
+        /// <summary>
+        /// Fills STOP values and emits #STOP table definitions for new values.
+        /// </summary>
+        private static bool FillStopValues(int[] values, List<Entry> entries, long common, long commonDivisor, Dictionary<int, Fraction> stopMap, StreamWriter headerWriter, ref bool repeat)
+        {
+            bool write = false;
+            foreach (Entry entry in entries)
+            {
+                int offset = GetValueOffset(entry, common, commonDivisor);
+                int entryIndex = RegisterValue(stopMap, entry.Value);
+                headerWriter.WriteLine("#STOP" + Util.ConvertToBMEString(entryIndex, 2) + " " + Math.Round((double)entry.Value, 6).ToString());
+                if (TryPlaceValue(values, offset, entryIndex, entry, ref repeat))
+                    write = true;
+            }
+            return write;
+        }
+
+        /// <summary>
+        /// Fills BPM table values and emits #BPM table definitions for new values.
+        /// </summary>
+        private static bool FillTempoValues(int[] values, List<Entry> entries, long common, long commonDivisor, Dictionary<int, Fraction> bpmMap, StreamWriter headerWriter, ref int bpmCount, ref bool repeat)
+        {
+            bool write = false;
+            foreach (Entry entry in entries)
+            {
+                int offset = GetValueOffset(entry, common, commonDivisor);
+                int entryIndex = GetOrRegisterBpm(bpmMap, headerWriter, entry.Value);
+                bpmCount = Math.Max(bpmCount, entryIndex);
+                if (TryPlaceValue(values, offset, entryIndex, entry, ref repeat))
+                    write = true;
+            }
+            return write;
+        }
+
+        /// <summary>
+        /// Fills direct numeric channel values for BGA and other non-table entries.
+        /// </summary>
+        private static bool FillRawValues(int[] values, List<Entry> entries, long common, long commonDivisor, ref bool repeat)
+        {
+            bool write = false;
+            foreach (Entry entry in entries)
+            {
+                int offset = GetValueOffset(entry, common, commonDivisor);
+                int value = (int)(entry.Value.Numerator / entry.Value.Denominator);
+                if (TryPlaceValue(values, offset, value, entry, ref repeat))
+                    write = true;
+            }
+            return write;
+        }
+
+        /// <summary>
+        /// Registers a sample value and returns the BMS object index used in channel data.
+        /// </summary>
+        private int RegisterSampleValue(int sampleIndex)
+        {
+            if (!reSampleMap.ContainsKey(sampleIndex))
+                reSampleMap.Add(sampleIndex, reSampleMap.Count());
+            reSampleMap.TryGetValue(sampleIndex, out sampleIndex);
+            return sampleIndex + 1;
+        }
+
+        /// <summary>
+        /// Gets an existing BPM table index or emits a new #BPM definition.
+        /// </summary>
+        private static int GetOrRegisterBpm(Dictionary<int, Fraction> bpmMap, StreamWriter headerWriter, Fraction value)
+        {
+            foreach (KeyValuePair<int, Fraction> bpmEntry in bpmMap)
+                if (bpmEntry.Value == value)
+                    return bpmEntry.Key;
+            int entryIndex = RegisterValue(bpmMap, value);
+            headerWriter.WriteLine("#BPM" + Util.ConvertToBMEString(entryIndex, 2) + " " + Math.Round((double)value, 3).ToString());
+            return entryIndex;
+        }
+
+        /// <summary>
+        /// Converts an entry metric offset into a channel array index.
+        /// </summary>
+        private static int GetValueOffset(Entry entry, long common, long commonDivisor)
+        {
+            long multiplier = common / entry.MetricOffset.Denominator;
+            return (int)((entry.MetricOffset.Numerator * multiplier) / commonDivisor);
+        }
+
+        /// <summary>
+        /// Places a channel value unless another event already occupies the same position.
+        /// </summary>
+        private static bool TryPlaceValue(int[] values, int offset, int value, Entry entry, ref bool repeat)
+        {
+            if (offset < 0 || offset >= values.Length || entry.Used)
+                return false;
+            if (values[offset] != 0)
+            {
+                repeat = true;
+                return false;
+            }
+            values[offset] = value;
+            entry.Used = true;
+            return true;
+        }
+
+        /// <summary>
+        /// Reduces and writes a BMS channel line to the body stream.
+        /// </summary>
+        private static void WriteBmsChannelLine(StreamWriter bodyWriter, string measureString, string laneString, int[] values)
+        {
+            StringBuilder builder = new StringBuilder();
+            values = Reduce(values);
+            builder.Append("#" + measureString + laneString + ":");
+            for (int i = 0; i < values.Length; i++)
+                builder.Append(Util.ConvertToBMEString(values[i], 2));
+            bodyWriter.WriteLine(builder.ToString());
+        }
+        /// <summary>
+        /// Writes all measure channel data and returns the optional render auto tip WAV name.
+        /// </summary>
+        private string WriteChannelData(Chart chart, int delayPoint, Dictionary<int, Fraction> bpmMap, Dictionary<int, Fraction> stopMap, HashSet<Entry> longNoteEntries, bool useLongNoteChannels, StreamWriter headerWriter, StreamWriter bodyWriter, ref int bpmCount)
+        {
+            chart.ClearUsed();
+            int currentMeasure = 0;
+            int currentOperation = 0;
+            int measureCount = chart.Measures;
+            bool repeat = false;
+            List<Entry> measureEntries = new List<Entry>();
+            List<Entry> entries = new List<Entry>();
+            EntryType currentType = EntryType.Invalid;
+            int currentColumn = -1;
+            int currentPlayer = -1;
+            string laneString = "";
+            string measureString = "";
+            string rendarWavName = WriteRenderAutoTipPreview(chart, bodyWriter, currentMeasure + delayPoint);
+            if (rendarWavName.Length > 0)
+                reSampleMap.Add(1, 0);
+
+            ApplyMssSupport(chart);
+
+            while (currentMeasure < measureCount)
+            {
+                if (!repeat)
+                {
+                    entries.Clear();
+                    currentType = EntryType.Invalid;
+                    currentColumn = 0;
+                    currentPlayer = 0;
+                    laneString = "00";
+
+                    if (currentOperation == 0)
+                    {
+                        measureString = FormatMeasureNumber(currentMeasure + delayPoint);
+                        CollectMeasureEntries(chart, currentMeasure, measureEntries);
+                    }
+                    else if (IsSkippedLaneOperation(currentOperation))
+                    {
+                        currentOperation++;
+                        continue;
+                    }
+                    else
+                    {
+                        BmsLaneDefinition lane;
+                        if (!TryGetBmsLaneDefinition(currentOperation, out lane))
+                        {
+                            currentOperation = 0;
+                            currentMeasure++;
+                            continue;
+                        }
+
+                        currentType = lane.Type;
+                        currentPlayer = lane.Player;
+                        currentColumn = lane.Column;
+                        laneString = lane.Lane;
+                        CollectMatchingLaneEntries(measureEntries, entries, currentMeasure, lane, useLongNoteChannels, longNoteEntries);
+                    }
+                }
+
+                repeat = false;
+                if (entries.Count > 0)
+                    repeat = WriteLaneEntries(entries, currentType, currentPlayer, laneString, measureString, bpmMap, stopMap, headerWriter, bodyWriter, ref bpmCount);
+
+                if (!repeat)
+                    currentOperation++;
+            }
+
+            return rendarWavName;
+        }
+
+        /// <summary>
+        /// Writes the chart as a BMS-compatible text stream.
+        /// </summary>
+        public bool Write(Stream target, bool enableBackspinScratch)
+        {
+            reSampleMap.Clear();
+            int DelayPoint = 0;
+            string commonBellPath = "";
+            Dictionary<int, Fraction> bpmMap = new Dictionary<int, Fraction>();
+            Dictionary<int, Fraction> stopMap = new Dictionary<int, Fraction>();
+            BinaryWriter writer = new BinaryWriter(target, Encoding.GetEncoding(932));
+            Chart chart = charts[0];
+            HashSet<Entry> longNoteEntries = BuildLongNoteEntrySet(chart);
+            bool useLongNoteChannels = longNoteEntries.Count > 0;
+            if (chart.Tags.ContainsKey("COMMONBELLPATH"))
+                commonBellPath = chart.Tags["COMMONBELLPATH"];
+
+            MemoryStream header = new MemoryStream();
+            MemoryStream expansion = new MemoryStream();
+            MemoryStream body = new MemoryStream();
+
+            Encoding outputEncoding = Encoding.GetEncoding(932);
+            StreamWriter headerWriter = new StreamWriter(header, outputEncoding);
+            StreamWriter expansionWriter = new StreamWriter(expansion, outputEncoding);
+            StreamWriter bodyWriter = new StreamWriter(body, outputEncoding);
+
+            WriteInitialHeader(headerWriter, chart);
+            PrepareGeneratedHeaderTags(chart, useLongNoteChannels);
+            WriteExpansionHeader(expansionWriter, chart);
+            WriteVideoTagsAndDelay(chart, expansionWriter, bodyWriter, ref DelayPoint);
+            expansionWriter.WriteLine("");
+            expansionWriter.WriteLine("");
+
+            int bpmCount = 0;
+            string rendarWavName = WriteChannelData(chart, DelayPoint, bpmMap, stopMap, longNoteEntries, useLongNoteChannels, headerWriter, bodyWriter, ref bpmCount);
+
+            string keyset = "0";
+            if (chart.Tags.ContainsKey("KEYSET"))
+                keyset = chart.Tags["KEYSET"];
+            bool isSucces = GenerateReSampleTags(keyset, rendarWavName);
+            if (!isSucces)
+                return false;
+
+            WriteChartHeaderTags(headerWriter, chart, commonBellPath);
+            expansionWriter.WriteLine("*---------------------- MAIN DATA FIELD");
+            expansionWriter.WriteLine("");
+            expansionWriter.WriteLine("");
+            WriteMeasureLengths(expansionWriter, chart, DelayPoint);
+            FlushBmsOutput(writer, headerWriter, expansionWriter, bodyWriter, header, expansion, body);
             return true;
         }
     }

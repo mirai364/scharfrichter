@@ -38,7 +38,7 @@ namespace Scharfrichter.Codec.Archives
             bool foundChart = false;
             FirebeatChunk result = new FirebeatChunk();
             byte[] rawData = new byte[0x2000000];
-            source.Read(rawData, 0, rawData.Length);
+            source.ReadExactly(rawData, 0, rawData.Length);
 
             using (MemoryStream mem = new MemoryStream(rawData))
             {

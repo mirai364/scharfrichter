@@ -1,7 +1,9 @@
-﻿using Scharfrichter.Codec.Encryption;
+using Scharfrichter.Codec.Encryption;
 using Scharfrichter.Codec.Sounds;
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace Scharfrichter.Codec.Archives
 {
@@ -18,6 +20,7 @@ namespace Scharfrichter.Codec.Archives
 
     public class Bemani2DX : Archive
     {
+        private static readonly ParallelOptions DecodeParallelOptions = CreateDecodeParallelOptions();
         private List<Sound> sounds = new List<Sound>();
         public Bemani2DXType Type;
 
@@ -82,10 +85,6 @@ namespace Scharfrichter.Codec.Archives
                 reader = new BinaryReader(decodedData);
             }
 
-            // header length is at 0x10
-            // sample count is at 0x14
-            // offset list starts at 0x48
-
             reader.BaseStream.Position = 0x10;
 
             int headerLength = reader.ReadInt32();
@@ -99,13 +98,41 @@ namespace Scharfrichter.Codec.Archives
                 sampleOffset[i] = reader.ReadInt32();
             }
 
-            for (int i = 0; i < sampleCount; i++)
+            byte[][] sampleData = ReadSampleData(reader.BaseStream, sampleOffset);
+            Sound[] decodedSounds = new Sound[sampleData.Length];
+            Parallel.For(0, sampleData.Length, DecodeParallelOptions, i =>
             {
-                reader.BaseStream.Position = sampleOffset[i];
-                result.sounds.Add(Bemani2DXSound.Read(reader.BaseStream));
-            }
+                using (MemoryStream sampleStream = new MemoryStream(sampleData[i]))
+                {
+                    decodedSounds[i] = Bemani2DXSound.Read(sampleStream);
+                }
+            });
+            result.sounds.AddRange(decodedSounds);
 
             return result;
+        }
+
+        private static byte[][] ReadSampleData(Stream source, long[] sampleOffset)
+        {
+            byte[][] sampleData = new byte[sampleOffset.Length][];
+            for (int i = 0; i < sampleOffset.Length; i++)
+            {
+                long nextOffset = i + 1 < sampleOffset.Length ? sampleOffset[i + 1] : source.Length;
+                int length = (int)(nextOffset - sampleOffset[i]);
+                sampleData[i] = new byte[length];
+                source.Position = sampleOffset[i];
+                source.ReadExactly(sampleData[i], 0, length);
+            }
+
+            return sampleData;
+        }
+
+        private static ParallelOptions CreateDecodeParallelOptions()
+        {
+            return new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1)
+            };
         }
 
         public override Sound[] Sounds

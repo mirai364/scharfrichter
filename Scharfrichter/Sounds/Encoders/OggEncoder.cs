@@ -1,4 +1,4 @@
-﻿using OggVorbisEncoder;
+using OggVorbisEncoder;
 using System;
 using System.IO;
 
@@ -50,8 +50,14 @@ namespace Scharfrichter.Codec.Sounds.Encoders
             FlushPages(oggStream, target, true);
 
             int bytesPerSample = 2; // 16-bit
-            int sampleCount = finalData.Length / bytesPerSample;
-            int samplesPerChannel = sampleCount / sound.Format.Channels;
+            int channelCount = sound.Format.Channels;
+            if (channelCount <= 0)
+                return;
+
+            int bytesPerFrame = bytesPerSample * channelCount;
+            int usableByteCount = finalData.Length - (finalData.Length % bytesPerFrame);
+            int sampleCount = usableByteCount / bytesPerSample;
+            int samplesPerChannel = sampleCount / channelCount;
 
             float[][] floatSamples = new float[sound.Format.Channels][];
             for (int c = 0; c < sound.Format.Channels; c++)

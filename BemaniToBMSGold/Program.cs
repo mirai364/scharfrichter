@@ -4,12 +4,13 @@ namespace BemaniToBMSGold
 {
     class Program
     {
-        static long unitNumerator = 100;
-        static long unitDenominator = 6004;
-
         static void Main(string[] args)
         {
-            BemaniToBMS.Convert(args, unitNumerator, unitDenominator, false);
+            BemaniToBMS.Convert(
+                args,
+                ConverterTiming.BemaniToBmsGoldNumerator,
+                ConverterTiming.BemaniToBmsGoldDenominator,
+                false);
         }
     }
 }

@@ -208,7 +208,7 @@ namespace Scharfrichter.Codec
             while (amount > 0)
             {
                 bytesRead = Math.Min(amount, 65536);
-                source.Read(buffer, 0, bytesRead);
+                source.ReadExactly(buffer, 0, bytesRead);
                 amount -= bytesRead;
             }
         }

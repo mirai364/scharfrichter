@@ -100,7 +100,7 @@ namespace Scharfrichter.Codec.Archives
             // read header
             Header header = Header.Read(source);
             byte[] propertyPageData = new byte[header.BodyStart - Header.Size];
-            source.Read(propertyPageData, 0, propertyPageData.Length);
+            source.ReadExactly(propertyPageData, 0, propertyPageData.Length);
 
             // read property page
 

@@ -1,0 +1,13 @@
+﻿<Project>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <AppConfig></AppConfig>
+    <GenerateBindingRedirectsOutputType>false</GenerateBindingRedirectsOutputType>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' and '$(OutputType)' == 'Library' ">
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+  </PropertyGroup>
+  <ItemGroup Condition=" '$(Configuration)' == 'Release' ">
+    <None Remove="app.config" />
+    <Content Remove="app.config" />
+  </ItemGroup>
+</Project>

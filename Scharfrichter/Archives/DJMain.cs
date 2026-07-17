@@ -59,7 +59,7 @@ namespace Scharfrichter.Codec.Archives
             bool foundChart = false;
             DJMainChunk result = new DJMainChunk();
             byte[] rawData = new byte[0x1000000];
-            source.Read(rawData, 0, rawData.Length);
+            source.ReadExactly(rawData, 0, rawData.Length);
             result.raws.Add(rawData);
 
             using (MemoryStream mem = new MemoryStream(rawData))

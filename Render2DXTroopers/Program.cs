@@ -15,7 +15,11 @@ namespace Render2DXTroopers
                 args = new string[] { baseName + ".1", baseName + ".2dx", baseName + ".s3p" };
             }
 
-            ConvertHelper.Render.RenderWAV(args, 1, 1000, false);
+            ConvertHelper.Render.RenderWAV(
+                args,
+                ConvertHelper.ConverterTiming.StandardNumerator,
+                ConvertHelper.ConverterTiming.StandardDenominator,
+                false);
         }
     }
 }

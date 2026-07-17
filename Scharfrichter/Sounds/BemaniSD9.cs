@@ -26,7 +26,7 @@ namespace Scharfrichter.Codec.Sounds
                     using (WaveStream wavStream = new WaveFileReader(wavDataMem))
                     {
                         byte[] rawWaveData = new byte[wavStream.Length];
-                        wavStream.Read(rawWaveData, 0, (int)wavStream.Length);
+                        wavStream.ReadExactly(rawWaveData, 0, (int)wavStream.Length);
                         result.SetSound(rawWaveData, wavStream.WaveFormat);
                     }
                 }

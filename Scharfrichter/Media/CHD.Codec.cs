@@ -46,7 +46,7 @@ namespace Scharfrichter.Codec.Media
             byte[] buffer = new byte[decompressedLength];
             using (DeflateStream ds = new DeflateStream(baseStream, CompressionMode.Decompress, true))
             {
-                ds.Read(buffer, 0, (int)decompressedLength);
+                ds.ReadExactly(buffer, 0, (int)decompressedLength);
             }
             return buffer;
         }

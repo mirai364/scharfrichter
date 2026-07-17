@@ -1,6 +1,4 @@
-﻿using NAudio.Wave;
-using NAudio.WindowsMediaFormat;
-
+using NAudio.Wave;
 using System.IO;
 
 namespace Scharfrichter.Codec.Sounds
@@ -10,20 +8,13 @@ namespace Scharfrichter.Codec.Sounds
         static public Sound Read(byte[] source)
         {
             Sound result = new Sound();
-            var tempFilePath = Path.GetTempFileName();
-
-            File.WriteAllBytes(tempFilePath, source);
-            WMAFileReader fileReader = new WMAFileReader(tempFilePath);
-            File.Delete(tempFilePath);
+            using (MemoryStream sourceStream = new MemoryStream(source, false))
+            using (WaveStream fileReader = new StreamMediaFoundationReader(sourceStream, new MediaFoundationReader.MediaFoundationReaderSettings()))
             using (WaveStream wavStream = WaveFormatConversionStream.CreatePcmStream(fileReader))
             {
-                int bytesToRead;
-
-                // using a mux, we force all sounds to be 2 channels
-                bytesToRead = (int)wavStream.Length;
-
+                int bytesToRead = (int)wavStream.Length;
                 byte[] rawWaveData = new byte[bytesToRead];
-                int bytesRead = wavStream.Read(rawWaveData, 0, bytesToRead);
+                wavStream.ReadExactly(rawWaveData, 0, bytesToRead);
                 result.SetSound(rawWaveData, wavStream.WaveFormat);
             }
 

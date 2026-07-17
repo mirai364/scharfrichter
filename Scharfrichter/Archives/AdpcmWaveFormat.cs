@@ -1,14 +1,15 @@
-﻿using System;
+﻿using NAudio.Wave;
+using System;
 using System.Runtime.InteropServices;
 
-namespace NAudio.Wave
+namespace Scharfrichter.Codec.Archives
 {
     /// <summary>
     /// Microsoft ADPCM
     /// See http://icculus.org/SDL_sound/downloads/external_documentation/wavecomp.htm
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 2)]
-    public class AdpcmWaveFormat : WaveFormat
+    public class ScharfrichterAdpcmWaveFormat : WaveFormat
     {
         short samplesPerBlock;
         short numCoeff;
@@ -19,7 +20,7 @@ namespace NAudio.Wave
         /// <summary>
         /// Empty constructor needed for marshalling from a pointer
         /// </summary>
-        AdpcmWaveFormat() : this(8000, 1)
+        ScharfrichterAdpcmWaveFormat() : this(8000, 1)
         {
         }
 
@@ -52,7 +53,7 @@ namespace NAudio.Wave
         /// </summary>
         /// <param name="sampleRate">Sample Rate</param>
         /// <param name="channels">Channels</param>
-        public AdpcmWaveFormat(int sampleRate, int channels) :
+        public ScharfrichterAdpcmWaveFormat(int sampleRate, int channels) :
             base(sampleRate, 0, channels)
         {
             this.waveFormatTag = WaveFormatEncoding.Adpcm;
@@ -89,7 +90,7 @@ namespace NAudio.Wave
         }
 
         // *** Added for Scharfrichter
-        public AdpcmWaveFormat(int sampleRate, int channels, short blockAlign, int avgBytesPerSecond, short samplesPerBlock) :
+        public ScharfrichterAdpcmWaveFormat(int sampleRate, int channels, short blockAlign, int avgBytesPerSecond, short samplesPerBlock) :
             base(sampleRate, 0, channels)
         {
             this.waveFormatTag = WaveFormatEncoding.Adpcm;

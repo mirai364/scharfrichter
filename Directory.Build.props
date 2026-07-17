@@ -1,8 +1,15 @@
-<Project>
+﻿<Project>
   <!-- Centralize OutputPath so Debug/Release outputs match original layout -->
   <PropertyGroup>
+    <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
     <!-- Debug -> Output, Release -> Output\Release -->
     <OutputPath Condition=" '$(Configuration)' == 'Debug' ">..\Output\</OutputPath>
     <OutputPath Condition=" '$(Configuration)' == 'Release' ">..\Output\Release\</OutputPath>
+    <DebugType Condition=" '$(Configuration)' == 'Release' ">none</DebugType>
+    <DebugSymbols Condition=" '$(Configuration)' == 'Release' ">false</DebugSymbols>
   </PropertyGroup>
+  <ItemGroup Condition="$([System.String]::Copy('$(TargetFramework)').Contains('-windows'))">
+    <Compile Include="$(MSBuildThisFileDirectory)SharedAssemblyInfo.cs" Link="Properties\SharedAssemblyInfo.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SharedRuntimeSetup.cs" Link="Properties\SharedRuntimeSetup.cs" />
+  </ItemGroup>
 </Project>

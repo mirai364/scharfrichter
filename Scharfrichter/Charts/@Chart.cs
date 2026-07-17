@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace Scharfrichter.Codec.Charts
@@ -165,38 +165,42 @@ namespace Scharfrichter.Codec.Charts
             }
         }
 
-        // Convert Linear offsets into Metric offsets for the entry list.
+        /// <summary>
+        /// Converts linear offsets into metric offsets for the entry list.
+        /// </summary>
         public void CalculateMetricOffsets()
         {
-            // verify all required linear info is present
+            ValidateLinearOffsets();
+            ClearMetricOffsets();
+            entries.Sort();
+            lengths.Clear();
+
+            Dictionary<int, Fraction> lengthList = BuildLinearMeasureLengthList();
+            ApplyMetricOffsets(lengthList);
+        }
+
+        /// <summary>
+        /// Ensures every entry has linear timing before metric offsets are calculated.
+        /// </summary>
+        private void ValidateLinearOffsets()
+        {
             foreach (Entry entry in entries)
             {
                 if (!entry.LinearOffsetInitialized)
                     throw new Exception("Metric offsets can't be calculated because at least one entry is missing Linear offset information.");
             }
+        }
 
-            // delete all metric offset data
-            ClearMetricOffsets();
-
-            // make sure everything is sorted before we begin
-            entries.Sort();
-
-            // initialization
-            Fraction bpm = DefaultBPM;
-            Fraction lastMeasureOffset = new Fraction(0, 1);
-            Fraction lastTempoOffset = new Fraction(0, 1);
-            Fraction length = new Fraction(0, 1);
+        /// <summary>
+        /// Builds measured linear lengths for measures that do not contain tempo changes.
+        /// </summary>
+        private Dictionary<int, Fraction> BuildLinearMeasureLengthList()
+        {
             Dictionary<int, Fraction> lengthList = new Dictionary<int, Fraction>();
+            Fraction lastMeasureOffset = new Fraction(0, 1);
             int measure = 0;
-            Fraction measureLength = new Fraction(0, 1);
-            Fraction metricBase = new Fraction(0, 1);
-            Fraction rate = Util.CalculateMeasureRate(bpm);
             bool tempoChanged = false;
 
-            // discard length list since it will be generated later
-            lengths.Clear();
-
-            // get measure lengths for non-tempo-changing measures
             foreach (Entry entry in entries)
             {
                 if (entry.Type == EntryType.Measure || entry.Type == EntryType.EndOfSong)
@@ -204,121 +208,160 @@ namespace Scharfrichter.Codec.Charts
                     if (entry.LinearOffset != lastMeasureOffset)
                     {
                         if (!tempoChanged)
-                        {
-                            Fraction distance = entry.LinearOffset - lastMeasureOffset;
-                            if ((double)distance < 0)
-                                throw new Exception("INTERNAL ERROR DAMMIT.");
-                            lengthList.Add(measure, distance);
-                        }
+                            AddLinearMeasureLength(lengthList, measure, entry.LinearOffset - lastMeasureOffset);
                         lastMeasureOffset = entry.LinearOffset;
                         measure++;
                         tempoChanged = false;
                     }
                 }
-                else if (entry.Type == EntryType.Tempo)
+                else if (entry.Type == EntryType.Tempo && (entry.LinearOffset - lastMeasureOffset).Numerator != 0)
                 {
-                    if ((entry.LinearOffset - lastMeasureOffset).Numerator != 0)
-                    {
-                        tempoChanged = true;
-                    }
+                    tempoChanged = true;
                 }
             }
 
-            // initialization for the calculation phase
-            measure = 0;
-            lastMeasureOffset = new Fraction(0, 1);
+            return lengthList;
+        }
 
-            Fraction tickMeasureLength;
-            if (lengthList.ContainsKey(0))
-                tickMeasureLength = lengthList[0];
-            else
-                tickMeasureLength = new Fraction(0, 1);
+        /// <summary>
+        /// Adds one linear measure length after validating that it moves forward in time.
+        /// </summary>
+        private static void AddLinearMeasureLength(Dictionary<int, Fraction> lengthList, int measure, Fraction distance)
+        {
+            if ((double)distance < 0)
+                throw new Exception("INTERNAL ERROR DAMMIT.");
+            lengthList.Add(measure, distance);
+        }
 
+        /// <summary>
+        /// Applies metric offsets to every entry using the calculated measure lengths.
+        /// </summary>
+        private void ApplyMetricOffsets(Dictionary<int, Fraction> lengthList)
+        {
+            Fraction bpm = DefaultBPM;
+            Fraction lastMeasureOffset = new Fraction(0, 1);
+            Fraction lastTempoOffset = new Fraction(0, 1);
+            int measure = 0;
+            Fraction measureLength = new Fraction(0, 1);
+            Fraction rate = Util.CalculateMeasureRate(bpm);
+            Fraction tickMeasureLength = GetMeasureTickLength(lengthList, 0);
             List<Entry> entryList = new List<Entry>();
             List<Entry> measureEntryList = new List<Entry>();
 
-            // calculate metric offsets
             foreach (Entry entry in entries)
             {
-                // on any measure, end of song or tempo events, update the metric rate information
-                if (entry.Type == EntryType.Measure || entry.Type == EntryType.Tempo || entry.Type == EntryType.EndOfSong)
+                if (IsMetricRateBoundary(entry))
                 {
                     Fraction measureDistance = ((entry.LinearOffset - lastTempoOffset) * TickRate) / rate;
-
-                    // calculate metric offset for entries in tempo-changing measures
-                    foreach (Entry tempoEntry in entryList)
-                    {
-                        tempoEntry.MetricOffset = Fraction.Shrink(measureLength + (((tempoEntry.LinearOffset - lastTempoOffset) / (entry.LinearOffset - lastTempoOffset)) * measureDistance));
-                        tempoEntry.MetricMeasure = measure;
-                        measureEntryList.Add(tempoEntry);
-                    }
-
+                    ApplyPendingTempoEntries(entryList, measureEntryList, measure, measureLength, measureDistance, lastTempoOffset, entry.LinearOffset);
                     measureLength += measureDistance;
 
                     if (entry.Type == EntryType.Measure || entry.Type == EntryType.EndOfSong)
-                    {
-                        if (entry.LinearOffset != lastMeasureOffset)
-                        {
-                            // apply measure length to all entries in a tempo-changing measure
-                            // so it's actually using the proper scale
-                            foreach (Entry measureEntry in measureEntryList)
-                            {
-                                Fraction temp = measureEntry.MetricOffset;
-                                temp /= measureLength;
-                                measureEntry.MetricOffset = Fraction.Shrink(temp);
-                                while ((double)measureEntry.MetricOffset >= 1)
-                                {
-                                    Fraction offs = measureEntry.MetricOffset;
-                                    measureEntry.MetricMeasure++;
-                                    offs.Numerator -= offs.Denominator;
-                                    measureEntry.MetricOffset = offs;
-                                }
-                            }
-                            measureEntryList.Clear();
-                            MeasureLengths[measure] = measureLength;
-                            measure++;
-                            lastMeasureOffset = Fraction.Shrink(entry.LinearOffset);
-                            measureLength = new Fraction(0, 1);
-                        }
-                        entry.MetricOffset = new Fraction(0, 1);
-                        entry.MetricMeasure = measure;
-                    }
+                        ApplyMeasureBoundary(entry, measureEntryList, ref measure, ref measureLength, ref lastMeasureOffset);
                     else if (entry.Type == EntryType.Tempo)
-                    {
-                        // on tempo change, update rate
-                        bpm = entry.Value;
-                        rate = Util.CalculateMeasureRate(bpm);
-                    }
+                        rate = Util.CalculateMeasureRate(entry.Value);
+
                     lastTempoOffset = entry.LinearOffset;
-
-                    // some measures have a defined length, use this on non-tempo-changing measures
-                    // for best accuracy
-                    if (lengthList.ContainsKey(measure))
-                        tickMeasureLength = lengthList[measure];
-                    else
-                        tickMeasureLength = new Fraction(0, 1);
-
+                    tickMeasureLength = GetMeasureTickLength(lengthList, measure);
                     entryList.Clear();
                 }
 
-                // calculate metric offset
-                if (tickMeasureLength.Numerator > 0)
-                {
-                    entry.MetricOffset = Fraction.Shrink((entry.LinearOffset - lastTempoOffset) / tickMeasureLength);
-                    entry.MetricMeasure = measure;
-                    while ((double)entry.MetricOffset >= 1)
-                    {
-                        Fraction offs = entry.MetricOffset;
-                        entry.MetricMeasure++;
-                        offs.Numerator -= offs.Denominator;
-                        entry.MetricOffset = Fraction.Shrink(offs);
-                    }
-                }
-                else
-                {
-                    entryList.Add(entry);
-                }
+                ApplyEntryMetricOffset(entry, entryList, tickMeasureLength, lastTempoOffset, measure);
             }
+        }
+
+        /// <summary>
+        /// Determines whether an entry changes metric timing state.
+        /// </summary>
+        private static bool IsMetricRateBoundary(Entry entry)
+        {
+            return entry.Type == EntryType.Measure || entry.Type == EntryType.Tempo || entry.Type == EntryType.EndOfSong;
+        }
+
+        /// <summary>
+        /// Applies provisional offsets to entries collected inside a tempo-changing measure.
+        /// </summary>
+        private static void ApplyPendingTempoEntries(List<Entry> entryList, List<Entry> measureEntryList, int measure, Fraction measureLength, Fraction measureDistance, Fraction lastTempoOffset, Fraction entryLinearOffset)
+        {
+            foreach (Entry tempoEntry in entryList)
+            {
+                tempoEntry.MetricOffset = Fraction.Shrink(measureLength + (((tempoEntry.LinearOffset - lastTempoOffset) / (entryLinearOffset - lastTempoOffset)) * measureDistance));
+                tempoEntry.MetricMeasure = measure;
+                measureEntryList.Add(tempoEntry);
+            }
+        }
+
+        /// <summary>
+        /// Finalizes entries and length metadata at a measure or end-of-song boundary.
+        /// </summary>
+        private void ApplyMeasureBoundary(Entry entry, List<Entry> measureEntryList, ref int measure, ref Fraction measureLength, ref Fraction lastMeasureOffset)
+        {
+            if (entry.LinearOffset != lastMeasureOffset)
+            {
+                NormalizeTempoMeasureEntries(measureEntryList, measureLength);
+                MeasureLengths[measure] = measureLength;
+                measure++;
+                lastMeasureOffset = Fraction.Shrink(entry.LinearOffset);
+                measureLength = new Fraction(0, 1);
+            }
+            entry.MetricOffset = new Fraction(0, 1);
+            entry.MetricMeasure = measure;
+        }
+
+        /// <summary>
+        /// Scales entries collected during a tempo-changing measure into measure-relative offsets.
+        /// </summary>
+        private static void NormalizeTempoMeasureEntries(List<Entry> measureEntryList, Fraction measureLength)
+        {
+            foreach (Entry measureEntry in measureEntryList)
+            {
+                Fraction temp = measureEntry.MetricOffset;
+                temp /= measureLength;
+                measureEntry.MetricOffset = Fraction.Shrink(temp);
+                NormalizeMetricOverflow(measureEntry);
+            }
+            measureEntryList.Clear();
+        }
+
+        /// <summary>
+        /// Applies a direct metric offset or delays the entry until a tempo boundary is known.
+        /// </summary>
+        private static void ApplyEntryMetricOffset(Entry entry, List<Entry> pendingEntries, Fraction tickMeasureLength, Fraction lastTempoOffset, int measure)
+        {
+            if (tickMeasureLength.Numerator > 0)
+            {
+                entry.MetricOffset = Fraction.Shrink((entry.LinearOffset - lastTempoOffset) / tickMeasureLength);
+                entry.MetricMeasure = measure;
+                NormalizeMetricOverflow(entry);
+            }
+            else
+            {
+                pendingEntries.Add(entry);
+            }
+        }
+
+        /// <summary>
+        /// Moves offsets greater than or equal to one into following measures.
+        /// </summary>
+        private static void NormalizeMetricOverflow(Entry entry)
+        {
+            while ((double)entry.MetricOffset >= 1)
+            {
+                Fraction offs = entry.MetricOffset;
+                entry.MetricMeasure++;
+                offs.Numerator -= offs.Denominator;
+                entry.MetricOffset = Fraction.Shrink(offs);
+            }
+        }
+
+        /// <summary>
+        /// Gets a measured tick length or zero when the measure needs tempo-boundary calculation.
+        /// </summary>
+        private static Fraction GetMeasureTickLength(Dictionary<int, Fraction> lengthList, int measure)
+        {
+            if (lengthList.ContainsKey(measure))
+                return lengthList[measure];
+            return new Fraction(0, 1);
         }
 
         public void ClearLinearOffsets()
@@ -606,86 +649,120 @@ namespace Scharfrichter.Codec.Charts
         public bool Used;
         public bool IsMss = false;
 
+        /// <summary>
+        /// Compares entries by timing, lane metadata, and special event ordering.
+        /// </summary>
         public int CompareTo(Entry other)
         {
-            if (other.MetricOffsetInitialized && this.MetricOffsetInitialized)
+            int timingOrder = CompareTiming(other);
+            if (timingOrder != 0)
+                return timingOrder;
+
+            int laneOrder = CompareLaneMetadata(other);
+            if (laneOrder != 0)
+                return laneOrder;
+
+            return CompareEventPriority(other);
+        }
+
+        /// <summary>
+        /// Compares entries by metric timing when available, otherwise by linear timing.
+        /// </summary>
+        private int CompareTiming(Entry other)
+        {
+            if (other.MetricOffsetInitialized && MetricOffsetInitialized)
             {
-                if (other.MetricMeasure > this.MetricMeasure)
+                if (other.MetricMeasure > MetricMeasure)
                     return -1;
-                if (other.MetricMeasure < this.MetricMeasure)
+                if (other.MetricMeasure < MetricMeasure)
                     return 1;
-
-                double myFloat = (double)metricOffset;
-                double otherFloat = (double)other.metricOffset;
-
-                if (otherFloat > myFloat)
-                    return -1;
-                if (otherFloat < myFloat)
-                    return 1;
-            }
-            else if (other.LinearOffsetInitialized && this.LinearOffsetInitialized)
-            {
-                double myFloat = (double)linearOffset;
-                double otherFloat = (double)other.linearOffset;
-
-                if (otherFloat > myFloat)
-                    return -1;
-                if (otherFloat < myFloat)
-                    return 1;
+                return CompareFractions(metricOffset, other.metricOffset);
             }
 
-            if (other.Player > this.Player)
+            if (other.LinearOffsetInitialized && LinearOffsetInitialized)
+                return CompareFractions(linearOffset, other.linearOffset);
+
+            return 0;
+        }
+
+        /// <summary>
+        /// Compares player, column, and parameter fields after timing is equal.
+        /// </summary>
+        private int CompareLaneMetadata(Entry other)
+        {
+            int order = CompareDescending(Player, other.Player);
+            if (order != 0)
+                return order;
+            order = CompareDescending(Column, other.Column);
+            if (order != 0)
+                return order;
+            return CompareDescending(Parameter, other.Parameter);
+        }
+
+        /// <summary>
+        /// Compares event classes that must appear before or after ordinary notes.
+        /// </summary>
+        private int CompareEventPriority(Entry other)
+        {
+            int order = ComparePreferredFirst(Type, other.Type, EntryType.Measure);
+            if (order != 0)
+                return order;
+            order = ComparePreferredFirst(Type, other.Type, EntryType.Tempo);
+            if (order != 0)
+                return order;
+            order = ComparePreferredFirst(Type, other.Type, EntryType.Sample);
+            if (order != 0)
+                return order;
+            return ComparePreferredLast(Type, other.Type, EntryType.EndOfSong);
+        }
+
+        /// <summary>
+        /// Compares two fractions using their floating-point values.
+        /// </summary>
+        private static int CompareFractions(Fraction current, Fraction other)
+        {
+            double currentFloat = (double)current;
+            double otherFloat = (double)other;
+            if (otherFloat > currentFloat)
                 return -1;
-            if (other.Player < this.Player)
+            if (otherFloat < currentFloat)
                 return 1;
+            return 0;
+        }
 
-            if (other.Column > this.Column)
+        /// <summary>
+        /// Compares integer fields using the existing descending sort convention.
+        /// </summary>
+        private static int CompareDescending(int current, int other)
+        {
+            if (other > current)
                 return -1;
-            if (other.Column < this.Column)
+            if (other < current)
                 return 1;
+            return 0;
+        }
 
-            if (other.Parameter > this.Parameter)
+        /// <summary>
+        /// Gives the preferred type an earlier sort position.
+        /// </summary>
+        private static int ComparePreferredFirst(EntryType current, EntryType other, EntryType preferred)
+        {
+            if (current == preferred && other != preferred)
                 return -1;
-            if (other.Parameter < this.Parameter)
+            if (current != preferred && other == preferred)
                 return 1;
+            return 0;
+        }
 
-            // these must come at the beginning
-            if (this.Type == EntryType.Measure && other.Type != EntryType.Measure)
-            {
-                return -1;
-            }
-            if (this.Type != EntryType.Measure && other.Type == EntryType.Measure)
-            {
+        /// <summary>
+        /// Gives the preferred type a later sort position.
+        /// </summary>
+        private static int ComparePreferredLast(EntryType current, EntryType other, EntryType preferred)
+        {
+            if (current == preferred && other != preferred)
                 return 1;
-            }
-            if (this.Type == EntryType.Tempo && other.Type != EntryType.Tempo)
-            {
+            if (current != preferred && other == preferred)
                 return -1;
-            }
-            if (this.Type != EntryType.Tempo && other.Type == EntryType.Tempo)
-            {
-                return 1;
-            }
-            if (this.Type == EntryType.Sample && other.Type != EntryType.Sample)
-            {
-                return -1;
-            }
-            if (this.Type != EntryType.Sample && other.Type == EntryType.Sample)
-            {
-                return 1;
-            }
-
-            // these must come at the end
-            if (this.Type == EntryType.EndOfSong && other.Type != EntryType.EndOfSong)
-            {
-                return 1;
-            }
-            if (this.Type != EntryType.EndOfSong && other.Type == EntryType.EndOfSong)
-            {
-                return -1;
-            }
-
-            // at this point, order does not matter
             return 0;
         }
 
@@ -767,6 +844,7 @@ namespace Scharfrichter.Codec.Charts
         Invalid,
         Marker,
         Sample,
+        Stop,
         Tempo,
         Measure,
         Mine,
@@ -776,3 +854,5 @@ namespace Scharfrichter.Codec.Charts
         EndOfSong
     }
 }
+
+

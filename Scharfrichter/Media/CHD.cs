@@ -193,7 +193,7 @@ namespace Scharfrichter.Codec.Media
             if (entry.length == header.hunkSize)
             {
                 result = new byte[header.hunkSize];
-                baseStream.Read(result, 0, (int)(header.hunkSize * header.seclen));
+                baseStream.ReadExactly(result, 0, (int)(header.hunkSize * header.seclen));
             }
             else
             {
@@ -217,7 +217,7 @@ namespace Scharfrichter.Codec.Media
                 case 0x2:
                     baseStream.Position = (long)entry.offset;
                     result = new byte[header.hunkBytes];
-                    baseStream.Read(result, 0, (int)header.hunkBytes);
+                    baseStream.ReadExactly(result, 0, (int)header.hunkBytes);
                     break;
                 case 0x3:
                     result = DecompressMini(entry.offset, header.hunkBytes);

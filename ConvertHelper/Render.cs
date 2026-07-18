@@ -2,6 +2,7 @@ using Scharfrichter.Codec;
 using Scharfrichter.Codec.Archives;
 using Scharfrichter.Codec.Charts;
 using Scharfrichter.Codec.Sounds;
+using Scharfrichter.Codec.Sounds.Encoders;
 using Scharfrichter.Common;
 
 using System;
@@ -36,6 +37,7 @@ namespace ConvertHelper
             public Chart[] Charts;
             public List<byte[]> RenderedData;
             public List<int> RenderedIndexes;
+            public string SoundOutputFormat;
         }
 
         /// <summary>
@@ -81,7 +83,8 @@ namespace ConvertHelper
                 Sounds = new Dictionary<string, Sound[]>(),
                 Charts = null,
                 RenderedData = new List<byte[]>(),
-                RenderedIndexes = new List<int>()
+                RenderedIndexes = new List<int>(),
+                SoundOutputFormat = config["IIDX"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat)
             };
         }
 
@@ -286,7 +289,7 @@ namespace ConvertHelper
                 if (sounds == null)
                     continue;
 
-                byte[] data = RenderChart(chart, sounds, context.UseRenderAutoTip);
+                byte[] data = RenderChart(chart, sounds, context.SoundOutputFormat);
                 int matchIndex = FindRenderedMatch(data, context);
                 WriteRenderedData(k, keySet, data, matchIndex, context);
             }
@@ -323,14 +326,11 @@ namespace ConvertHelper
         }
 
         /// <summary>
-        /// Renders one chart to OGG or WAV bytes.
+        /// Renders one chart to the configured audio format.
         /// </summary>
-        private static byte[] RenderChart(Chart chart, Sound[] sounds, bool useRenderAutoTip)
+        private static byte[] RenderChart(Chart chart, Sound[] sounds, string soundOutputFormat)
         {
-            if (useRenderAutoTip)
-                return ChartRenderer.RenderAsFormat(chart, sounds, "ogg");
-
-            return ChartRenderer.RenderAsFormat(chart, sounds, "wav");
+            return ChartRenderer.RenderAsFormat(chart, sounds, SoundEncoderFactory.GetFileExtension(soundOutputFormat));
         }
 
         /// <summary>
@@ -410,12 +410,12 @@ namespace ConvertHelper
                 string difficulty = (chartIndex < 6 ? 1 : 3) + context.Config["IIDX"].GetValue("DIFFICULTY" + chartIndex.ToString()).ToString();
                 Console.WriteLine("Writing unique " + difficulty);
                 Common.SafeCreateDirectory(context.TargetPath);
-                File.WriteAllBytes(context.TargetPath + "\\" + context.OutFile + "-" + difficulty + ".ogg", data);
+                File.WriteAllBytes(context.TargetPath + "\\" + context.OutFile + "-" + difficulty + "." + SoundEncoderFactory.GetFileExtension(context.SoundOutputFormat), data);
             }
             else
             {
                 Console.WriteLine("Writing unique " + chartIndex.ToString());
-                File.WriteAllBytes(context.OutFile + " -" + Util.ConvertToDecimalString(chartIndex, 2) + ".wav", data);
+                File.WriteAllBytes(context.OutFile + " -" + Util.ConvertToDecimalString(chartIndex, 2) + "." + SoundEncoderFactory.GetFileExtension(context.SoundOutputFormat), data);
             }
         }
     }

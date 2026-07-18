@@ -38,6 +38,7 @@ namespace ConvertHelper
             public long UnitDenominator;
             public bool UseRenderAutoTip;
             public string OutputFolder;
+            public string SoundOutputFormat;
             public Dictionary<string, InputFileInfo> VirtualInputs = new Dictionary<string, InputFileInfo>(StringComparer.OrdinalIgnoreCase);
         }
 
@@ -99,6 +100,7 @@ namespace ConvertHelper
             public bool UseMovie;
             public int OutputRank;
             public string OutputFormat;
+            public string SoundOutputFormat;
         }
 
         /// <summary>
@@ -211,6 +213,7 @@ namespace ConvertHelper
             using (MemoryStream mem = new MemoryStream())
             {
                 BMS bms = CreateBms(chart, options, filename);
+                bms.SoundExtension = SoundEncoderFactory.GetFileExtension(options.SoundOutputFormat);
                 string name = GetChartName(chart, filename);
                 string dirPath = BuildChartDirectory(config, version, name);
                 string output = BuildChartOutputPath(dirPath, ref name, options.Title, bms.Charts[0], options.OutputFormat);
@@ -221,6 +224,7 @@ namespace ConvertHelper
                 if (IsBmsonOutput(options.OutputFormat))
                 {
                     Bmson bmson = new Bmson();
+                    bmson.SoundExtension = SoundEncoderFactory.GetFileExtension(options.SoundOutputFormat);
                     bmson.Charts = bms.Charts;
                     if (!bmson.Write(mem, GetBmsonSoundLayout(chart)))
                         return false;
@@ -241,7 +245,7 @@ namespace ConvertHelper
         /// <summary>
         /// Encodes a sound set as OGG samples or a preview file for pre-2DX assets.
         /// </summary>
-        static public void ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "", string outputFormat = "bms")
+        static public void ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "", string outputFormat = "bms", string soundOutputFormat = SoundEncoderFactory.DefaultFormat)
         {
             string name = GetSoundSetName(filename, nameInfo);
             string targetPath = Path.Combine(outputFolder, version, name);
@@ -249,11 +253,11 @@ namespace ConvertHelper
 
             if (isPre2DX)
             {
-                ConvertPreviewSound(sounds, targetPath, volume, updateTime);
+                ConvertPreviewSound(sounds, targetPath, volume, updateTime, soundOutputFormat);
                 return;
             }
 
-            ConvertSampleSounds(sounds, targetPath, INDEX, volume, updateTime, outputFormat);
+            ConvertSampleSounds(sounds, targetPath, INDEX, volume, updateTime, outputFormat, soundOutputFormat);
         }
 
         /// <summary>
@@ -261,14 +265,16 @@ namespace ConvertHelper
         /// </summary>
         private static ConversionContext CreateContext(long unitNumerator, long unitDenominator, bool useRenderAutoTip)
         {
+            Configuration config = Configuration.LoadIIDXConfig(Common.configFileName);
             return new ConversionContext
             {
-                Config = Configuration.LoadIIDXConfig(Common.configFileName),
+                Config = config,
                 Database = Common.LoadDB(),
                 UnitNumerator = unitNumerator,
                 UnitDenominator = unitDenominator,
                 UseRenderAutoTip = useRenderAutoTip,
-                OutputFolder = null
+                OutputFolder = null,
+                SoundOutputFormat = config["IIDX"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat)
             };
         }
 
@@ -395,10 +401,10 @@ namespace ConvertHelper
                     case @".CS9":
                         break;
                     case @".SD9":
-                        ConvertSD9Sound(source, input);
+                        ConvertSD9Sound(source, input, context.SoundOutputFormat);
                         break;
                     case @".SSP":
-                        ConvertSounds(BemaniSSP.Read(source).Sounds, filename, FullSampleVolume, input.UpdateTime, null, "", "", false, "", context.Config["BMS"].GetString("OutputFormat", "bms"));
+                        ConvertSounds(BemaniSSP.Read(source).Sounds, filename, FullSampleVolume, input.UpdateTime, null, "", "", false, "", context.Config["BMS"].GetString("OutputFormat", "bms"), context.SoundOutputFormat);
                         break;
                 }
             }
@@ -811,18 +817,18 @@ namespace ConvertHelper
             if (TryConvertPackedBmsonSounds(sounds, input, context, volume, title))
                 return;
 
-            ConvertSounds(sounds, input.Filename, volume, input.UpdateTime, input.Index, context.OutputFolder, title, input.IsPre2DX, input.Version, context.Config["BMS"].GetString("OutputFormat", "bms"));
+            ConvertSounds(sounds, input.Filename, volume, input.UpdateTime, input.Index, context.OutputFolder, title, input.IsPre2DX, input.Version, context.Config["BMS"].GetString("OutputFormat", "bms"), context.SoundOutputFormat);
         }
 
         /// <summary>
         /// Converts one SD9 sound file to WAV.
         /// </summary>
-        private static void ConvertSD9Sound(MemoryStream source, InputFileInfo input)
+        private static void ConvertSD9Sound(MemoryStream source, InputFileInfo input, string soundOutputFormat)
         {
             Sound sound = BemaniSD9.Read(source);
             string targetFile = Path.GetFileNameWithoutExtension(input.Filename);
-            string targetPath = Path.Combine(Path.GetDirectoryName(input.Filename), targetFile) + ".wav";
-            ISoundEncoder encoder = new WavEncoder();
+            string targetPath = Path.Combine(Path.GetDirectoryName(input.Filename), targetFile) + "." + SoundEncoderFactory.GetFileExtension(soundOutputFormat);
+            ISoundEncoder encoder = SoundEncoderFactory.Create(soundOutputFormat);
             encoder.EncodeToFile(sound, targetPath, FullSampleVolume);
         }
 
@@ -889,7 +895,8 @@ namespace ConvertHelper
                 IsSameFolderMovie = config["BMS"].GetBool("IsSameFolderMovie"),
                 UseMovie = config["BMS"].GetBool("UseMovie"),
                 OutputRank = config["BMS"].GetValue("OutputRank"),
-                OutputFormat = config["BMS"].GetString("OutputFormat", "bms")
+                OutputFormat = config["BMS"].GetString("OutputFormat", "bms"),
+                SoundOutputFormat = config["IIDX"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat)
             };
         }
 
@@ -1117,7 +1124,7 @@ namespace ConvertHelper
 
             Parallel.ForEach(tracksToEncode, PackedSoundEncodingParallelOptions, track =>
             {
-                EncodePackedSoundTrack(track, sounds, soundPath, volume, input.UpdateTime);
+                EncodePackedSoundTrack(track, sounds, soundPath, volume, input.UpdateTime, context.SoundOutputFormat);
             });
 
             foreach (PendingBmsonChart pending in charts)
@@ -1198,8 +1205,9 @@ namespace ConvertHelper
                 targetTrack.EndSeconds = Math.Max(targetTrack.EndSeconds, soundEvent.EndSeconds);
             }
 
+            string soundExtension = SoundEncoderFactory.GetFileExtension(context.SoundOutputFormat);
             for (int i = 0; i < tracks.Count; i++)
-                tracks[i].Name = soundFolder + "/" + "bmson_" + (i + 1).ToString("0000") + ".ogg";
+                tracks[i].Name = soundFolder + "/" + "bmson_" + (i + 1).ToString("0000") + "." + soundExtension;
 
             foreach (PendingBmsonChart pending in charts)
                 BmsonSoundLayouts[pending.Chart] = BuildChartPackedBmsonLayout(pending.Chart, tracks, chartByEntry);
@@ -1354,7 +1362,7 @@ namespace ConvertHelper
                    left.BitsPerSample == right.BitsPerSample &&
                    left.BlockAlign == right.BlockAlign;
         }
-        private static void EncodePackedSoundTrack(PackedSoundTrackBuild track, Sound[] sounds, string soundPath, float volume, DateTime updateTime)
+        private static void EncodePackedSoundTrack(PackedSoundTrackBuild track, Sound[] sounds, string soundPath, float volume, DateTime updateTime, string soundOutputFormat)
         {
             Sound firstSound = sounds[track.Events[0].SampleIndex - 1];
             int bytesPerFrame = firstSound.Format.BlockAlign;
@@ -1382,7 +1390,7 @@ namespace ConvertHelper
             };
 
             string output = Path.Combine(soundPath, Path.GetFileName(track.Name));
-            ISoundEncoder encoder = new OggEncoder();
+            ISoundEncoder encoder = SoundEncoderFactory.Create(soundOutputFormat);
             encoder.EncodeToFile(packedSound, output, 1.0f);
             SetFileTimes(output, updateTime);
         }
@@ -1422,10 +1430,10 @@ namespace ConvertHelper
         /// <summary>
         /// Writes the preview OGG for a pre-2DX sound archive.
         /// </summary>
-        private static void ConvertPreviewSound(Sound[] sounds, string targetPath, float volume, DateTime updateTime)
+        private static void ConvertPreviewSound(Sound[] sounds, string targetPath, float volume, DateTime updateTime, string soundOutputFormat)
         {
-            string output = Path.Combine(targetPath, @"preview" + @".ogg");
-            ISoundEncoder encoder = new OggEncoder();
+            string output = Path.Combine(targetPath, @"preview" + @"." + SoundEncoderFactory.GetFileExtension(soundOutputFormat));
+            ISoundEncoder encoder = SoundEncoderFactory.Create(soundOutputFormat);
             encoder.EncodeToFile(sounds[0], output, volume);
             SetFileTimes(output, updateTime);
         }
@@ -1433,12 +1441,12 @@ namespace ConvertHelper
         /// <summary>
         /// Writes numbered OGG sample files for a normal sound archive.
         /// </summary>
-        private static void ConvertSampleSounds(Sound[] sounds, string targetPath, string index, float volume, DateTime updateTime, string outputFormat)
+        private static void ConvertSampleSounds(Sound[] sounds, string targetPath, string index, float volume, DateTime updateTime, string outputFormat, string soundOutputFormat)
         {
             targetPath = BuildSampleTargetPath(targetPath, index, outputFormat);
             Parallel.For(0, sounds.Length, SampleEncodingParallelOptions, i =>
             {
-                EncodeSampleSound(sounds[i], i + 1, targetPath, volume, updateTime, outputFormat);
+                EncodeSampleSound(sounds[i], i + 1, targetPath, volume, updateTime, outputFormat, soundOutputFormat);
             });
 
             SetDirectoryTimes(targetPath, updateTime);
@@ -1447,13 +1455,13 @@ namespace ConvertHelper
         /// <summary>
         /// Encodes one numbered OGG sample file.
         /// </summary>
-        private static void EncodeSampleSound(Sound sound, int sampleIndex, string targetPath, float volume, DateTime updateTime, string outputFormat)
+        private static void EncodeSampleSound(Sound sound, int sampleIndex, string targetPath, float volume, DateTime updateTime, string outputFormat, string soundOutputFormat)
         {
-            string sampleName = GetSampleFileName(sampleIndex, outputFormat);
+            string sampleName = GetSampleFileName(sampleIndex, outputFormat, soundOutputFormat);
             string output = Path.Combine(targetPath, sampleName);
             try
             {
-                ISoundEncoder encoder = new OggEncoder();
+                ISoundEncoder encoder = SoundEncoderFactory.Create(soundOutputFormat);
                 encoder.EncodeToFile(sound, output, volume);
                 SetFileTimes(output, updateTime);
             }
@@ -1466,9 +1474,9 @@ namespace ConvertHelper
         /// <summary>
         /// Returns the sample filename used by the selected output format.
         /// </summary>
-        private static string GetSampleFileName(int sampleIndex, string outputFormat)
+        private static string GetSampleFileName(int sampleIndex, string outputFormat, string soundOutputFormat)
         {
-            return Util.ConvertToBMEString(sampleIndex, 4) + @".ogg";
+            return Util.ConvertToBMEString(sampleIndex, 4) + @"." + SoundEncoderFactory.GetFileExtension(soundOutputFormat);
         }
 
         /// <summary>

@@ -17,6 +17,19 @@ namespace Scharfrichter.Codec.Archives
         public const int Resolution = 240;
         private const int PulsesPerMeasure = Resolution * 4;
         private Chart[] charts = new Chart[] { null };
+        private string soundExtension = "ogg";
+
+        public string SoundExtension
+        {
+            get
+            {
+                return soundExtension;
+            }
+            set
+            {
+                soundExtension = String.IsNullOrWhiteSpace(value) ? "ogg" : value.Trim().TrimStart('.').ToLowerInvariant();
+            }
+        }
 
         public override Chart[] Charts
         {
@@ -47,9 +60,9 @@ namespace Scharfrichter.Codec.Archives
             return "sounds_" + keyset;
         }
 
-        public static string GetSoundFileName(int sample)
+        public string GetSoundFileName(int sample)
         {
-            return Util.ConvertToBMEString(sample, 4) + ".ogg";
+            return Util.ConvertToBMEString(sample, 4) + "." + SoundExtension;
         }
 
         public bool Write(Stream target)
@@ -75,7 +88,7 @@ namespace Scharfrichter.Codec.Archives
             return true;
         }
 
-        private static BmsonRoot CreateRoot(Chart chart, BmsonSoundLayout soundLayout)
+        private BmsonRoot CreateRoot(Chart chart, BmsonSoundLayout soundLayout)
         {
             List<int> measureStarts = BuildMeasureStarts(chart);
 
@@ -274,7 +287,7 @@ namespace Scharfrichter.Codec.Archives
             return events.ToArray();
         }
 
-        private static BmsonSoundChannel[] CreateSoundChannels(Chart chart, List<int> measureStarts)
+        private BmsonSoundChannel[] CreateSoundChannels(Chart chart, List<int> measureStarts)
         {
             Dictionary<int, int> sampleOrder = new Dictionary<int, int>();
             Dictionary<int, List<BmsonNote>> notesBySample = new Dictionary<int, List<BmsonNote>>();
@@ -445,7 +458,7 @@ namespace Scharfrichter.Codec.Archives
             return lane;
         }
 
-        private static string GetSampleName(Chart chart, int sample)
+        private string GetSampleName(Chart chart, int sample)
         {
             string keyset = "0";
             if (chart.Tags.ContainsKey("KEYSET"))

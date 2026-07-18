@@ -1,48 +1,47 @@
-using NAudio.Wave;
-using NReco.VideoConverter;
+using CUETools.Codecs;
+using CUETools.Codecs.FLAKE;
+using System;
 using System.IO;
 
 namespace Scharfrichter.Codec.Sounds.Encoders
 {
     public class FlacEncoder : ISoundEncoder
     {
-        public FlacEncoder()
-        {
-            // Initialization for NReco.VideoConverter is not strictly required.
-            // It automatically extracts and manages the embedded ffmpeg binaries.
-        }
-
         public void EncodeToFile(Sound sound, string targetFile, float masterVolume)
         {
+            if (sound.Data == null || sound.Data.Length == 0) return;
+
             using (FileStream target = new FileStream(targetFile, FileMode.Create, FileAccess.Write))
             {
                 Encode(sound, target, masterVolume);
                 target.Flush();
             }
+
+            if (!File.Exists(targetFile) || new FileInfo(targetFile).Length == 0)
+                throw new InvalidOperationException("FLAC encoder produced an empty output file.");
         }
 
         public void Encode(Sound sound, Stream target, float masterVolume)
         {
             if (sound.Data == null || sound.Data.Length == 0) return;
 
-            byte[] wavData = CreateWaveData(sound, masterVolume);
-            using (MemoryStream inputStream = new MemoryStream(wavData))
+            byte[] finalData = sound.Render(masterVolume);
+            AudioPCMConfig pcm = CreatePcmConfig(sound);
+            int sampleCount = finalData.Length / pcm.BlockAlign;
+            AudioBuffer buffer = new AudioBuffer(pcm, finalData, sampleCount);
+
+            using (FlakeWriter writer = new FlakeWriter(null, new NonClosingStream(target), pcm))
             {
-                FFMpegConverter ffmpeg = new FFMpegConverter();
-                ffmpeg.ConvertLiveMedia(inputStream, "wav", target, "flac", new ConvertSettings());
+                writer.CompressionLevel = 8;
+                writer.FinalSampleCount = sampleCount;
+                writer.Write(buffer);
+                writer.Close();
             }
         }
 
-        private static byte[] CreateWaveData(Sound sound, float masterVolume)
+        private static AudioPCMConfig CreatePcmConfig(Sound sound)
         {
-            byte[] finalData = sound.Render(masterVolume);
-            using (MemoryStream dataStream = new MemoryStream(finalData))
-            using (RawSourceWaveStream wavStream = new RawSourceWaveStream(dataStream, sound.Format))
-            using (MemoryStream wavData = new MemoryStream())
-            {
-                WaveFileWriter.WriteWavFileToStream(wavData, wavStream);
-                return wavData.ToArray();
-            }
+            return new AudioPCMConfig(sound.Format.BitsPerSample, sound.Format.Channels, sound.Format.SampleRate);
         }
     }
 }

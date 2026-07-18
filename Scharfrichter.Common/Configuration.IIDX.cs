@@ -1,4 +1,4 @@
-﻿namespace Scharfrichter.Common
+namespace Scharfrichter.Common
 {
     public partial class Configuration
     {
@@ -37,6 +37,8 @@
             config["IIDX"].SetDefaultString("Players7", "3");
             config["IIDX"].SetDefaultString("Players8", "3");
             config["IIDX"].SetDefaultString("Players9", "3");
+            config["IIDX"].SetDefaultString("SoundOutputFormat", "ogg");
+            config["POPN"].SetDefaultString("SoundOutputFormat", "ogg");
             return config;
         }
 

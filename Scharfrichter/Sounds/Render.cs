@@ -1,8 +1,8 @@
-﻿using NAudio.Utils;
+using NAudio.Utils;
 using NAudio.Wave;
-using NReco.VideoConverter; // For FLAC
 using OggVorbisEncoder;     // For OGG
 using Scharfrichter.Codec.Charts;
+using Scharfrichter.Codec.Sounds.Encoders;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -145,7 +145,7 @@ namespace Scharfrichter.Codec.Sounds
         }
 
         /// <summary>
-        /// Performs commonized encoding to the specified format ("wav", "flac", "ogg").
+        /// Performs commonized encoding to the specified format ("ogg", "flac", "wav", "mp3").
         /// </summary>
         static public byte[] RenderAsFormat(Chart chart, Sound[] sounds, string format)
         {
@@ -162,8 +162,20 @@ namespace Scharfrichter.Codec.Sounds
                 return EncodeToOgg(samples, waveFormat);
             }
 
-            // For WAV and FLAC, use NAudio to generate a standard WAV (with RIFF header) byte array
-            byte[] wavData = null;
+            byte[] pcmData = new byte[samples.Length * sizeof(short)];
+            Buffer.BlockCopy(samples, 0, pcmData, 0, pcmData.Length);
+
+            if (targetFormat == "wav" || targetFormat == "wave")
+                return EncodeToWav(samples, waveFormat);
+
+            if (targetFormat == "flac" || targetFormat == "mp3")
+                return EncodeSoundData(pcmData, waveFormat, targetFormat);
+
+            throw new NotSupportedException($"Format {format} is not supported.");
+        }
+
+        private static byte[] EncodeToWav(Int16[] samples, WaveFormat waveFormat)
+        {
             using (MemoryStream mem = new MemoryStream())
             {
                 using (WaveFileWriter writer = new WaveFileWriter(new IgnoreDisposeStream(mem), waveFormat))
@@ -171,31 +183,20 @@ namespace Scharfrichter.Codec.Sounds
                     writer.WriteSamples(samples, 0, samples.Length);
                 }
                 mem.Flush();
-                wavData = mem.ToArray();
+                return mem.ToArray();
             }
-
-            if (targetFormat == "wav" || targetFormat == "wave")
-            {
-                return wavData;
-            }
-
-            // 3. For FLAC, pass the WAV data to NReco.VideoConverter (FFmpeg) for encoding
-            if (targetFormat == "flac")
-            {
-                var ffmpeg = new FFMpegConverter();
-                using (MemoryStream inputStream = new MemoryStream(wavData))
-                using (MemoryStream outputStream = new MemoryStream())
-                {
-                    // FIX: Use ConvertLiveMedia for Stream to Stream conversions
-                    ffmpeg.ConvertLiveMedia(inputStream, "wav", outputStream, "flac", new ConvertSettings());
-                    return outputStream.ToArray();
-                }
-            }
-
-            throw new NotSupportedException($"Format {format} is not supported.");
         }
 
-        /// <summary>
+        private static byte[] EncodeSoundData(byte[] pcmData, WaveFormat waveFormat, string targetFormat)
+        {
+            ISoundEncoder encoder = targetFormat == "flac" ? (ISoundEncoder)new FlacEncoder() : new Mp3Encoder();
+            Sound sound = new Sound(pcmData, waveFormat);
+            using (MemoryStream output = new MemoryStream())
+            {
+                encoder.Encode(sound, output, 1.0f);
+                return output.ToArray();
+            }
+        }        /// <summary>
         /// Encodes pure PCM data to OGG Vorbis using OggVorbisEncoder.
         /// </summary>
         static private byte[] EncodeToOgg(Int16[] pcmSamples, WaveFormat format)

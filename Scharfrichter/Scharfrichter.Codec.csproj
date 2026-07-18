@@ -17,8 +17,9 @@
        explicit control over included files, set <EnableDefaultCompileItems>false/> and
        re-add explicit <Compile> entries. -->
   <ItemGroup>
-    <PackageReference Include="NAudio" Version="1.10.0" />
-    <PackageReference Include="NReco.VideoConverter" Version="1.2.1" />
+    <PackageReference Include="CUETools.Codecs.FLAKE" Version="1.0.5" />
+    <PackageReference Include="NAudio" Version="2.1.0" />
+    <PackageReference Include="NAudio.Lame" Version="2.1.0" />
     <PackageReference Include="OggVorbisEncoder" Version="1.2.2" />
 
 

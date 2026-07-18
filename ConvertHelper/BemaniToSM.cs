@@ -116,7 +116,7 @@ namespace ConvertHelper
             switch (Path.GetExtension(filename).ToUpper())
             {
                 case @".XWB":
-                    ConvertXwb(filename);
+                    ConvertXwb(filename, config);
                     break;
                 case @".SSQ":
                     ConvertSsq(filename, config, manualSelect);
@@ -127,7 +127,7 @@ namespace ConvertHelper
         /// <summary>
         /// Extracts every sound from an XWB bank as WAV files.
         /// </summary>
-        private static void ConvertXwb(string filename)
+        private static void ConvertXwb(string filename, Configuration config)
         {
             using (FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             {
@@ -137,22 +137,23 @@ namespace ConvertHelper
                 Directory.CreateDirectory(outPath);
 
                 for (int i = 0; i < bank.SoundCount; i++)
-                    WriteXwbSound(bank, i, outPath);
+                    WriteXwbSound(bank, i, outPath, config["DDR"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat));
             }
         }
 
         /// <summary>
         /// Writes one sound from an XWB bank as a WAV file.
         /// </summary>
-        private static void WriteXwbSound(MicrosoftXWB bank, int index, string outPath)
+        private static void WriteXwbSound(MicrosoftXWB bank, int index, string outPath, string soundOutputFormat)
         {
             string outFileName = String.IsNullOrEmpty(bank.Sounds[index].Name)
                 ? Util.ConvertToHexString(index, 4)
                 : bank.Sounds[index].Name;
 
-            string outFile = Path.Combine(outPath, outFileName + ".wav");
+            string soundExtension = SoundEncoderFactory.GetFileExtension(soundOutputFormat);
+            string outFile = Path.Combine(outPath, outFileName + "." + soundExtension);
             Console.WriteLine("Writing " + outFile);
-            ISoundEncoder encoder = new WavEncoder();
+            ISoundEncoder encoder = SoundEncoderFactory.Create(soundOutputFormat);
             encoder.EncodeToFile(bank.Sounds[index], outFile, 1.0f);
         }
 
@@ -413,6 +414,7 @@ namespace ConvertHelper
             config["DDR"].SetDefaultString("Difficulty3", "3");
             config["DDR"].SetDefaultString("Difficulty4", "4");
             config["DDR"].SetDefaultString("Difficulty6", "0");
+            config["DDR"].SetDefaultString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat);
             return config;
         }
 

@@ -24,6 +24,7 @@ namespace Scharfrichter.Codec.Archives
         private Chart[] charts = new Chart[] { null };
         private int[] sampleMap;
         private Dictionary<int, int> reSampleMap = new Dictionary<int, int>();
+        private string soundExtension = "ogg";
 
         /// <summary>
         /// Initializes a BMS archive with the default one-to-one sample map.
@@ -57,6 +58,18 @@ namespace Scharfrichter.Codec.Archives
             get
             {
                 return (charts[0] != null) ? 1 : 0;
+            }
+        }
+
+        public string SoundExtension
+        {
+            get
+            {
+                return soundExtension;
+            }
+            set
+            {
+                soundExtension = String.IsNullOrWhiteSpace(value) ? "ogg" : value.Trim().TrimStart('.').ToLowerInvariant();
             }
         }
 
@@ -119,13 +132,13 @@ namespace Scharfrichter.Codec.Archives
                     Console.WriteLine("WARNING: More than 1293 samples");
                     return false;
                 }
-                chart.Tags["WAV" + Util.ConvertToBMEString(pair.Value + 1, 2)] = targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".ogg";
-                //Console.WriteLine("WAV" + Util.ConvertToBMEString(pair.Value + 1, 2) + " " + targetFolder + Util.ConvertToBMEString(pair.Key, 4) + ".ogg");
+                chart.Tags["WAV" + Util.ConvertToBMEString(pair.Value + 1, 2)] = targetFolder + Util.ConvertToBMEString(pair.Key, 4) + "." + SoundExtension;
+                //Console.WriteLine("WAV" + Util.ConvertToBMEString(pair.Value + 1, 2) + " " + targetFolder + Util.ConvertToBMEString(pair.Key, 4) + "." + SoundExtension);
             }
 
             if (rendarWavName.Length > 0)
             {
-                chart.Tags["WAV01"] = targetFolder + rendarWavName + ".ogg";
+                chart.Tags["WAV01"] = targetFolder + rendarWavName + "." + SoundExtension;
             }
             return true;
         }
@@ -574,7 +587,7 @@ namespace Scharfrichter.Codec.Archives
             int noteCount = chart.NoteCount(1) + chart.NoteCount(2);
             double gauge = CalculateTotalGauge(noteCount);
             writer.WriteLine("#TOTAL " + gauge);
-            writer.WriteLine("#PREVIEW preview.ogg");
+            writer.WriteLine("#PREVIEW preview." + SoundExtension);
         }
 
         /// <summary>
@@ -722,7 +735,7 @@ namespace Scharfrichter.Codec.Archives
         /// <summary>
         /// Writes chart tags after generated WAV/BMP/BPM/STOP metadata has been prepared.
         /// </summary>
-        private static void WriteChartHeaderTags(StreamWriter headerWriter, Chart chart, string commonBellPath)
+        private static void WriteChartHeaderTags(StreamWriter headerWriter, Chart chart, string commonBellPath, string soundExtension)
         {
             foreach (KeyValuePair<string, string> tag in chart.Tags)
             {
@@ -730,7 +743,7 @@ namespace Scharfrichter.Codec.Archives
                 {
                     if (tag.Key == "VIDEO" || tag.Key == "VIDEODELAY" || tag.Key == "KEYSET" || tag.Key == "ISUSERENDERAUTOTIP")
                         continue;
-                    if (commonBellPath != "" && tag.Value.Contains("0000.ogg"))
+                    if (commonBellPath != "" && tag.Value.Contains("0000." + soundExtension))
                     {
                         WriteHeaderTag(headerWriter, tag.Key, commonBellPath);
                         continue;
@@ -1179,7 +1192,7 @@ namespace Scharfrichter.Codec.Archives
             if (!isSucces)
                 return false;
 
-            WriteChartHeaderTags(headerWriter, chart, commonBellPath);
+            WriteChartHeaderTags(headerWriter, chart, commonBellPath, SoundExtension);
             expansionWriter.WriteLine("*---------------------- MAIN DATA FIELD");
             expansionWriter.WriteLine("");
             expansionWriter.WriteLine("");

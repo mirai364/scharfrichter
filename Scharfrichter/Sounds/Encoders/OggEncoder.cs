@@ -27,7 +27,7 @@ namespace Scharfrichter.Codec.Sounds.Encoders
         {
             if (sound.Data == null || sound.Data.Length == 0) return;
 
-            byte[] finalData = sound.Render(masterVolume);
+            byte[] finalData = ShouldRender(sound, masterVolume) ? sound.Render(masterVolume) : sound.Data;
 
             VorbisInfo info = VorbisInfo.InitVariableBitRate(sound.Format.Channels, sound.Format.SampleRate, _baseQuality);
 
@@ -56,50 +56,57 @@ namespace Scharfrichter.Codec.Sounds.Encoders
 
             int bytesPerFrame = bytesPerSample * channelCount;
             int usableByteCount = finalData.Length - (finalData.Length % bytesPerFrame);
-            int sampleCount = usableByteCount / bytesPerSample;
-            int samplesPerChannel = sampleCount / channelCount;
+            const int samplesPerChannelPerChunk = 16384;
 
-            float[][] floatSamples = new float[sound.Format.Channels][];
-            for (int c = 0; c < sound.Format.Channels; c++)
+            float[][] floatSamples = new float[channelCount][];
+            for (int c = 0; c < channelCount; c++)
+                floatSamples[c] = new float[samplesPerChannelPerChunk];
+
+            for (int byteOffset = 0; byteOffset < usableByteCount;)
             {
-                floatSamples[c] = new float[samplesPerChannel];
-            }
+                int chunkByteCount = Math.Min(samplesPerChannelPerChunk * bytesPerFrame, usableByteCount - byteOffset);
+                int chunkSamplesPerChannel = chunkByteCount / bytesPerFrame;
 
-            for (int i = 0; i < sampleCount; i++)
-            {
-                short sample16 = BitConverter.ToInt16(finalData, i * bytesPerSample);
-                float sampleFloat = sample16 / 32768f;
+                for (int sampleIndex = 0; sampleIndex < chunkSamplesPerChannel; sampleIndex++)
+                {
+                    int frameOffset = byteOffset + (sampleIndex * bytesPerFrame);
+                    for (int channel = 0; channel < channelCount; channel++)
+                    {
+                        short sample16 = BitConverter.ToInt16(finalData, frameOffset + (channel * bytesPerSample));
+                        floatSamples[channel][sampleIndex] = sample16 / 32768f;
+                    }
+                }
 
-                int channel = i % sound.Format.Channels;
-                int sampleIndex = i / sound.Format.Channels;
-
-                floatSamples[channel][sampleIndex] = sampleFloat;
-            }
-
-            // Encode and write the data
-            processingState.WriteData(floatSamples, samplesPerChannel);
-
-            // Extract currently prepared packets and write them to the stream
-            while (processingState.PacketOut(out OggPacket packet))
-            {
-                oggStream.PacketIn(packet);
-                FlushPages(oggStream, target, false);
+                processingState.WriteData(floatSamples, chunkSamplesPerChannel);
+                FlushPackets(processingState, oggStream, target, false);
+                byteOffset += chunkByteCount;
             }
 
             // Process the end of the stream (sets the EOS flag)
             processingState.WriteEndOfStream();
-
-            // Extract remaining final packets (this includes the EOS packet)
-            while (processingState.PacketOut(out OggPacket finalPacket))
-            {
-                oggStream.PacketIn(finalPacket);
-                FlushPages(oggStream, target, false);
-            }
+            FlushPackets(processingState, oggStream, target, false);
 
             // Force flush all remaining pages in the Ogg container
             FlushPages(oggStream, target, true);
         }
 
+        private bool ShouldRender(Sound sound, float masterVolume)
+        {
+            return masterVolume != 1.0f ||
+                   sound.Volume != 1.0f ||
+                   sound.Panning != 0.5f ||
+                   sound.VolumeIsLinear ||
+                   sound.PanningIsLinear;
+        }
+
+        private void FlushPackets(ProcessingState processingState, OggStream oggStream, Stream target, bool forcePages)
+        {
+            while (processingState.PacketOut(out OggPacket packet))
+            {
+                oggStream.PacketIn(packet);
+                FlushPages(oggStream, target, forcePages);
+            }
+        }
         private void FlushPages(OggStream oggStream, Stream outputStream, bool force)
         {
             while (oggStream.PageOut(out OggPage page, force))

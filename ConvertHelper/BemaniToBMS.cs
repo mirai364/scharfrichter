@@ -22,9 +22,10 @@ namespace ConvertHelper
         private const float FullSampleVolume = 1.0f;
         private const int BmsSampleLimit = 1295;
         private const double MaxPackedTrackSeconds = 600.0;
-        private const double PackedSoundEventGapSeconds = 0.000;
+        private const double PackedSoundEventGapSeconds = 0.002;
         private const double PackedSoundTailPaddingSeconds = 1.000;
         private static readonly ParallelOptions SampleEncodingParallelOptions = CreateSampleEncodingParallelOptions();
+        private static readonly ParallelOptions PackedSoundEncodingParallelOptions = CreatePackedSoundEncodingParallelOptions();
 
         /// <summary>
         /// Holds configuration and runtime options shared across one conversion run.
@@ -964,8 +965,10 @@ namespace ConvertHelper
 
             List<PackedSoundTrackBuild> tracksToEncode = BuildPackedBmsonLayouts(charts, sounds, context, soundFolder);
 
-            foreach (PackedSoundTrackBuild track in tracksToEncode)
+            Parallel.ForEach(tracksToEncode, PackedSoundEncodingParallelOptions, track =>
+            {
                 EncodePackedSoundTrack(track, sounds, soundPath, volume, input.UpdateTime);
+            });
 
             foreach (PendingBmsonChart pending in charts)
                 ConvertChart(pending.Chart, pending.Config, pending.Filename, pending.Index, null, pending.UpdateTime, pending.Version);
@@ -1326,6 +1329,17 @@ namespace ConvertHelper
             return new ParallelOptions
             {
                 MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1)
+            };
+        }
+
+        /// <summary>
+        /// Creates the parallel encoding options used for large packed bmson sound files.
+        /// </summary>
+        private static ParallelOptions CreatePackedSoundEncodingParallelOptions()
+        {
+            return new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Max(1, Math.Min(2, Environment.ProcessorCount - 1))
             };
         }
 

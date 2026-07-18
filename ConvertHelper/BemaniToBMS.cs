@@ -38,6 +38,7 @@ namespace ConvertHelper
             public long UnitDenominator;
             public bool UseRenderAutoTip;
             public string OutputFolder;
+            public Dictionary<string, InputFileInfo> VirtualInputs = new Dictionary<string, InputFileInfo>(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -50,6 +51,7 @@ namespace ConvertHelper
             public string Version;
             public string Index;
             public bool IsPre2DX;
+            public bool IsVirtual;
             public DateTime UpdateTime;
             public byte[] Data;
         }
@@ -340,7 +342,22 @@ namespace ConvertHelper
             Console.WriteLine();
             Console.WriteLine("Processing File: " + filename);
 
+            if (String.Equals(Path.GetExtension(filename), ".ifs", StringComparison.OrdinalIgnoreCase))
+            {
+                ProcessIfsFile(filename, context);
+                return;
+            }
+
             InputFileInfo input = CreateInputFileInfo(filename, context);
+            ProcessInput(input, context);
+        }
+
+        /// <summary>
+        /// Dispatches one prepared input payload to the converter for its file extension.
+        /// </summary>
+        private static void ProcessInput(InputFileInfo input, ConversionContext context)
+        {
+            string filename = input.Filename;
             using (MemoryStream source = new MemoryStream(input.Data))
             {
                 switch (Path.GetExtension(filename).ToUpper())
@@ -349,22 +366,22 @@ namespace ConvertHelper
                         ConvertBemani1Archive(source, input, context);
                         break;
                     case @".2DX":
-                        if (ConvertedSoundFiles.Contains(Path.GetFullPath(filename)))
+                        if (ConvertedSoundFiles.Contains(GetInputIdentity(input)))
                             return;
                         EnsurePendingChartForSound(input, context);
-                        if (ConvertedSoundFiles.Contains(Path.GetFullPath(filename)))
+                        if (ConvertedSoundFiles.Contains(GetInputIdentity(input)))
                             return;
                         Convert2DXSamples(source, input, context);
-                        ConvertedSoundFiles.Add(Path.GetFullPath(filename));
+                        ConvertedSoundFiles.Add(GetInputIdentity(input));
                         break;
                     case @".S3P":
-                        if (ConvertedSoundFiles.Contains(Path.GetFullPath(filename)))
+                        if (ConvertedSoundFiles.Contains(GetInputIdentity(input)))
                             return;
                         EnsurePendingChartForSound(input, context);
-                        if (ConvertedSoundFiles.Contains(Path.GetFullPath(filename)))
+                        if (ConvertedSoundFiles.Contains(GetInputIdentity(input)))
                             return;
                         ConvertS3PSamples(source, input, context);
-                        ConvertedSoundFiles.Add(Path.GetFullPath(filename));
+                        ConvertedSoundFiles.Add(GetInputIdentity(input));
                         break;
                     case @".CS":
                         ConvertChart(BeatmaniaIIDXCSNew.Read(source), context.Config, filename, -1, null, input.UpdateTime);
@@ -388,12 +405,119 @@ namespace ConvertHelper
         }
 
         /// <summary>
+        /// Reads an IFS archive and converts supported chart and sound entries without extracting them.
+        /// </summary>
+        private static void ProcessIfsFile(string filename, ConversionContext context)
+        {
+            EnsureOutputFolder(filename, context);
+
+            List<InputFileInfo> inputs = ReadIfsInputs(filename, context);
+            if (inputs.Count == 0)
+                return;
+
+            foreach (InputFileInfo input in inputs)
+                context.VirtualInputs[GetInputIdentity(input)] = input;
+
+            foreach (InputFileInfo input in SortIfsInputs(inputs))
+            {
+                try
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("Processing IFS Entry: " + input.Filename);
+                    ProcessInput(input, context);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("{0} Exception caught." + input.Filename, e);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Creates virtual converter inputs for supported files stored in an IFS archive.
+        /// </summary>
+        private static List<InputFileInfo> ReadIfsInputs(string filename, ConversionContext context)
+        {
+            List<InputFileInfo> inputs = new List<InputFileInfo>();
+            DateTime archiveUpdateTime = File.GetLastWriteTime(filename);
+            string archiveDirectory = Path.GetDirectoryName(filename);
+
+            using (FileStream source = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                BemaniIFS archive = BemaniIFS.Read(source);
+                foreach (BemaniIFS.Entry entry in archive.Entries)
+                {
+                    if (!IsSupportedInputExtension(entry.FullPath))
+                        continue;
+
+                    string virtualFilename = Path.Combine(archiveDirectory, entry.FullPath);
+                    DateTime updateTime = entry.TimeStamp > 0 ? DateTimeOffset.FromUnixTimeSeconds(entry.TimeStamp).LocalDateTime : archiveUpdateTime;
+                    inputs.Add(CreateInputFileInfo(virtualFilename, entry.Data, updateTime, true, context));
+                }
+            }
+
+            return inputs;
+        }
+
+        /// <summary>
+        /// Orders IFS payloads so charts register before sample archives in bmson mode.
+        /// </summary>
+        private static List<InputFileInfo> SortIfsInputs(List<InputFileInfo> inputs)
+        {
+            List<InputFileInfo> result = new List<InputFileInfo>(inputs);
+            result.Sort(delegate (InputFileInfo left, InputFileInfo right)
+            {
+                int leftOrder = GetIfsInputOrder(left.Filename);
+                int rightOrder = GetIfsInputOrder(right.Filename);
+                int orderCompare = leftOrder.CompareTo(rightOrder);
+                if (orderCompare != 0)
+                    return orderCompare;
+
+                return StringComparer.OrdinalIgnoreCase.Compare(left.Filename, right.Filename);
+            });
+            return result;
+        }
+
+        private static int GetIfsInputOrder(string filename)
+        {
+            string extension = Path.GetExtension(filename).ToUpper();
+            if (extension == ".1")
+                return 0;
+            if (extension == ".CS" || extension == ".CS2" || extension == ".CS5")
+                return 1;
+            if (extension == ".2DX" || extension == ".S3P" || extension == ".SSP" || extension == ".SD9")
+                return 2;
+            return 3;
+        }
+
+        private static bool IsSupportedInputExtension(string filename)
+        {
+            switch (Path.GetExtension(filename).ToUpper())
+            {
+                case @".1":
+                case @".2DX":
+                case @".S3P":
+                case @".CS":
+                case @".CS2":
+                case @".CS5":
+                case @".SD9":
+                case @".SSP":
+                    return true;
+            }
+
+            return false;
+        }
+        /// <summary>
         /// Reads file bytes and parses database keys, version, index, and pre-2DX state from the name.
         /// </summary>
         private static InputFileInfo CreateInputFileInfo(string filename, ConversionContext context)
         {
             EnsureOutputFolder(filename, context);
+            return CreateInputFileInfo(filename, File.ReadAllBytes(filename), File.GetLastWriteTime(filename), false, context);
+        }
 
+        private static InputFileInfo CreateInputFileInfo(string filename, byte[] data, DateTime updateTime, bool isVirtual, ConversionContext context)
+        {
             string databaseName = Path.GetFileNameWithoutExtension(filename);
             string version = databaseName.Substring(0, 2);
             bool isPre2DX = false;
@@ -421,11 +545,19 @@ namespace ConvertHelper
                 Version = version,
                 Index = index,
                 IsPre2DX = isPre2DX,
-                UpdateTime = File.GetLastWriteTime(filename),
-                Data = File.ReadAllBytes(filename)
+                IsVirtual = isVirtual,
+                UpdateTime = updateTime,
+                Data = data
             };
         }
 
+        private static string GetInputIdentity(InputFileInfo input)
+        {
+            if (input.IsVirtual)
+                return input.Filename;
+
+            return Path.GetFullPath(input.Filename);
+        }
         /// <summary>
         /// Resolves the output folder from configuration or the input file directory.
         /// </summary>
@@ -459,11 +591,14 @@ namespace ConvertHelper
             HashSet<string> soundSets = GetRequiredSoundSets(archive);
             foreach (string soundSet in soundSets)
             {
-                string soundFile = ResolveSoundFile(chartInput.Filename, soundSet);
-                if (soundFile == null)
-                    throw new FileNotFoundException("Required sound file was not found for " + Path.GetFileName(chartInput.Filename) + " keyset " + soundSet + ". Expected a .s3p or .2dx file in the same folder.");
+                InputFileInfo soundInput = ResolveSoundInput(chartInput, soundSet, context);
+                if (soundInput == null)
+                {
+                    Console.WriteLine("Warning: Required sound file was not found for " + Path.GetFileName(chartInput.Filename) + " keyset " + soundSet + ". Expected a .s3p or .2dx file in the same folder or IFS archive.");
+                    continue;
+                }
 
-                ProcessFile(soundFile, context);
+                ProcessInput(soundInput, context);
             }
         }
 
@@ -483,23 +618,36 @@ namespace ConvertHelper
             return soundSets;
         }
 
-        private static string ResolveSoundFile(string chartFile, string soundSet)
+        private static InputFileInfo ResolveSoundInput(InputFileInfo chartInput, string soundSet, ConversionContext context)
         {
-            string directory = Path.GetDirectoryName(chartFile);
-            string baseName = Path.GetFileNameWithoutExtension(chartFile);
+            string directory = Path.GetDirectoryName(chartInput.Filename);
+            string baseName = Path.GetFileNameWithoutExtension(chartInput.Filename);
             string suffix = soundSet == "0" ? "" : soundSet;
             string[] extensions = { ".s3p", ".2dx" };
 
             foreach (string extension in extensions)
             {
                 string candidate = Path.Combine(directory, baseName + suffix + extension);
-                if (File.Exists(candidate))
-                    return candidate;
+                InputFileInfo input = ResolveInput(candidate, chartInput.IsVirtual, context);
+                if (input != null)
+                    return input;
             }
 
             return null;
         }
 
+        private static InputFileInfo ResolveInput(string filename, bool preferVirtual, ConversionContext context)
+        {
+            InputFileInfo input;
+            if (preferVirtual && context.VirtualInputs.TryGetValue(filename, out input))
+                return input;
+            if (File.Exists(filename))
+                return CreateInputFileInfo(filename, context);
+            if (context.VirtualInputs.TryGetValue(filename, out input))
+                return input;
+
+            return null;
+        }
         private static void EnsurePendingChartForSound(InputFileInfo soundInput, ConversionContext context)
         {
             if (!IsBmsonOutput(context.Config))
@@ -509,13 +657,19 @@ namespace ConvertHelper
             if (HasPendingChartForSound(soundInput, context, soundSet))
                 return;
 
-            string chartFile = ResolveChartFileForSound(soundInput.Filename);
-            if (chartFile == null)
-                throw new FileNotFoundException("Sound file " + Path.GetFileName(soundInput.Filename) + " requires a matching .1 file in the same folder for bmson conversion.");
+            InputFileInfo chartInput = ResolveChartInputForSound(soundInput, context);
+            if (chartInput == null)
+            {
+                Console.WriteLine("Warning: Sound file " + Path.GetFileName(soundInput.Filename) + " requires a matching .1 file in the same folder or IFS archive for bmson conversion.");
+                return;
+            }
 
-            ProcessFile(chartFile, context);
+            ProcessInput(chartInput, context);
             if (!HasPendingChartForSound(soundInput, context, soundSet))
-                throw new FileNotFoundException("Matching .1 file was found, but no chart uses keyset " + soundSet + " for " + Path.GetFileName(soundInput.Filename) + ".");
+            {
+                Console.WriteLine("Warning: Matching .1 file was found, but no chart uses keyset " + soundSet + " for " + Path.GetFileName(soundInput.Filename) + ".");
+                return;
+            }
         }
 
         private static bool HasPendingChartForSound(InputFileInfo soundInput, ConversionContext context, string soundSet)
@@ -529,20 +683,16 @@ namespace ConvertHelper
             return FindPendingBmsonCharts(targetPath, soundSet).Count > 0;
         }
 
-        private static string ResolveChartFileForSound(string soundFile)
+        private static InputFileInfo ResolveChartInputForSound(InputFileInfo soundInput, ConversionContext context)
         {
-            string directory = Path.GetDirectoryName(soundFile);
-            string baseName = Path.GetFileNameWithoutExtension(soundFile);
+            string directory = Path.GetDirectoryName(soundInput.Filename);
+            string baseName = Path.GetFileNameWithoutExtension(soundInput.Filename);
             if (baseName.Length > 5)
                 baseName = baseName.Substring(0, 5);
 
             string candidate = Path.Combine(directory, baseName + ".1");
-            if (File.Exists(candidate))
-                return candidate;
-
-            return null;
+            return ResolveInput(candidate, soundInput.IsVirtual, context);
         }
-
         private static string GetSoundSet(InputFileInfo input)
         {
             if (String.IsNullOrEmpty(input.Index))

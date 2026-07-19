@@ -8,7 +8,9 @@ using Scharfrichter.Common;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Xml.Linq;
 using System.Threading.Tasks;
 
 namespace ConvertHelper
@@ -20,6 +22,7 @@ namespace ConvertHelper
     {
         private const float DefaultSampleVolume = 0.6f;
         private const float FullSampleVolume = 1.0f;
+        private const int PlayVideoPoorFlag = 0x02;
         private const int BmsSampleLimit = 1295;
         private const double MaxPackedTrackSeconds = 600.0;
         private const double PackedSoundEventGapSeconds = 0.002;
@@ -101,6 +104,9 @@ namespace ConvertHelper
             public int OutputRank;
             public string OutputFormat;
             public string SoundOutputFormat;
+            public bool UseBgaImage;
+            public string BgaImageGraphicFolder;
+            public string BgaImageOutputName;
         }
 
         /// <summary>
@@ -110,6 +116,9 @@ namespace ConvertHelper
         {
             ConversionContext context = CreateContext(unitNumerator, unitDenominator, idUseRenderAutoTip);
             ShowSplash(context);
+
+            if (TryProcessBgaImageTest(inArgs, context.Config))
+                return;
 
             string[] args = PrepareInputArguments(inArgs);
             if (args.Length == 0)
@@ -308,12 +317,53 @@ namespace ConvertHelper
         }
 
         /// <summary>
+        /// Handles standalone BGA image rendering for visual verification.
+        /// </summary>
+        private static bool TryProcessBgaImageTest(string[] args, Configuration config)
+        {
+            if (args.Length == 0 || !String.Equals(args[0], "--bga-image-test", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string graphicRoot = args.Length > 1 ? args[1] : config["BMS"].GetString("BgaImageGraphicFolder", "");
+            string graphicId = args.Length > 2 ? args[2] : "";
+            string afpName = args.Length > 3 ? args[3] : "";
+            string outputFolder = args.Length > 4 ? args[4] : "bga_image_test";
+            string graphicFolder = ResolveBgaImageGraphicFolder(graphicRoot, graphicId);
+            if (String.IsNullOrWhiteSpace(graphicFolder))
+                throw new ArgumentException("BGA image graphic folder is required.");
+            if (String.IsNullOrWhiteSpace(outputFolder))
+                throw new ArgumentException("BGA image output folder is required.");
+
+            Console.WriteLine("Rendering BGA image test:");
+            Console.WriteLine("  graphic: " + graphicFolder);
+            Console.WriteLine("  output : " + outputFolder);
+            AfpBgaFrameRenderer.RenderResult result =
+                AfpBgaFrameRenderer.RenderFrames(graphicFolder, afpName, outputFolder, "bga_image");
+            Console.WriteLine("  frames : " + result.FrameFiles.Count);
+            Console.WriteLine("  fps    : " + result.Fps);
+            Console.WriteLine("  webm   : " + result.WebmFile);
+            Console.WriteLine("  manifest: " + result.ManifestFile);
+            Console.WriteLine("BGA image test frames written: " + outputFolder);
+            return true;
+        }
+
+        private static int ParsePositiveInt(string value, string name)
+        {
+            int result;
+            if (!Int32.TryParse(value, out result) || result <= 0)
+                throw new ArgumentException("Invalid " + name + ": " + value);
+
+            return result;
+        }
+
+        /// <summary>
         /// Prints command usage information.
         /// </summary>
         private static void ShowUsage()
         {
             Console.WriteLine();
             Console.WriteLine("Usage: BemaniToBMS <input file>");
+            Console.WriteLine("       BemaniToBMS --bga-image-test [graphic root/folder] [id] [afp name] [output folder]");
             Console.WriteLine();
             Console.WriteLine("Drag and drop with files and folders is fully supported for this application.");
             Console.WriteLine();
@@ -756,8 +806,11 @@ namespace ConvertHelper
             chart.Tags["TITLE"] = db[databaseName]["TITLE"];
             chart.Tags["ARTIST"] = db[databaseName]["ARTIST"];
             chart.Tags["GENRE"] = db[databaseName]["GENRE"];
+            chart.Tags["MUSICID"] = databaseName;
             chart.Tags["VIDEO"] = db[databaseName]["VIDEO"];
             chart.Tags["VIDEODELAY"] = db[databaseName]["VIDEODELAY"];
+            chart.Tags["PLAYVIDEOFLAGS"] = db[databaseName]["PLAYVIDEOFLAGS"];
+            CopyOverlayTags(chart, databaseName, db);
 
             if (chartIndex < 6)
             {
@@ -768,6 +821,18 @@ namespace ConvertHelper
                 ApplyDifficultyMetadata(chart, chartIndex, "DP", databaseName, config, db, useRenderAutoTip);
             }
         }
+
+        private static void CopyOverlayTags(Chart chart, string databaseName, Configuration db)
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                string tag = "OVERLAY" + i.ToString();
+                string value = db[databaseName][tag];
+                if (!String.IsNullOrWhiteSpace(value))
+                    chart.Tags[tag] = value;
+            }
+        }
+
 
         /// <summary>
         /// Applies play level, keyset, and auto-tip tags for one chart side.
@@ -896,7 +961,10 @@ namespace ConvertHelper
                 UseMovie = config["BMS"].GetBool("UseMovie"),
                 OutputRank = config["BMS"].GetValue("OutputRank"),
                 OutputFormat = config["BMS"].GetString("OutputFormat", "bms"),
-                SoundOutputFormat = config["IIDX"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat)
+                SoundOutputFormat = config["IIDX"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat),
+                UseBgaImage = config["BMS"].GetBool("UseBgaImage"),
+                BgaImageGraphicFolder = config["BMS"].GetString("BgaImageGraphicFolder", ""),
+                BgaImageOutputName = config["BMS"].GetString("BgaImageOutputName", "bga_image"),
             };
         }
 
@@ -1031,8 +1099,175 @@ namespace ConvertHelper
 
             if (sourceChart.Tags.ContainsKey("VIDEO") && options.IsSameFolderMovie && options.UseMovie)
                 CopyMovieFiles(sourceChart.Tags["VIDEO"], options.MovieFolder, dirPath);
+
+            ConfigureBgaImage(targetChart, sourceChart, options, dirPath);
         }
 
+        /// <summary>
+        /// Renders AFP/GEO assets and registers the result as a BMS BGA image sequence.
+        /// </summary>
+        private static void ConfigureBgaImage(Chart targetChart, Chart sourceChart, ChartOptions options, string dirPath)
+        {
+            if (!options.UseBgaImage || String.IsNullOrWhiteSpace(options.BgaImageGraphicFolder))
+                return;
+
+            string graphicId = sourceChart.Tags.ContainsKey("MUSICID") ? sourceChart.Tags["MUSICID"] : "";
+            string afpName = sourceChart.Tags.ContainsKey("OVERLAY0") ? sourceChart.Tags["OVERLAY0"] : "";
+            if (String.IsNullOrWhiteSpace(afpName))
+                return;
+
+            string graphicFolder = ResolveBgaImageGraphicFolder(options.BgaImageGraphicFolder, graphicId);
+            if (String.IsNullOrWhiteSpace(graphicFolder))
+            {
+                Console.WriteLine("Warning: BGA image graphic folder was not found for id: " + graphicId);
+                return;
+            }
+
+            string outputName = GetBgaImageOutputName(options.BgaImageOutputName);
+            string frameFolder = Path.Combine(dirPath, outputName);
+            bool isPoor = IsPoorOverlay(sourceChart, options.BgaImageGraphicFolder, graphicId);
+            string channel = isPoor ? "POOR" : "LAYER";
+            try
+            {
+                AfpBgaFrameRenderer.RenderResult result = AfpBgaFrameRenderer.RenderFrames(graphicFolder, afpName, frameFolder, outputName);
+                List<int> bmpIds = RegisterBgaImageFrames(targetChart, dirPath, result.FrameFiles);
+                AddBgaImageEvents(targetChart, bmpIds, result.Fps, channel);
+                Console.WriteLine("BGA image WebM written: " + result.WebmFile);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Warning: Failed to render BGA image: " + e.Message);
+            }
+        }
+
+        private static bool IsPoorOverlay(Chart sourceChart, string graphicRootOrFolder, string graphicId)
+        {
+            int flags;
+            if (sourceChart.Tags.ContainsKey("PLAYVIDEOFLAGS") &&
+                Int32.TryParse(sourceChart.Tags["PLAYVIDEOFLAGS"], out flags))
+                return (flags & PlayVideoPoorFlag) != 0;
+
+            string graphicRoot = graphicRootOrFolder;
+            if (IsBgaImageGraphicFolder(graphicRootOrFolder))
+            {
+                DirectoryInfo parent = Directory.GetParent(graphicRootOrFolder);
+                graphicRoot = parent == null ? "" : parent.FullName;
+            }
+
+            DirectoryInfo dataFolder = String.IsNullOrWhiteSpace(graphicRoot) ? null : Directory.GetParent(graphicRoot);
+            string videoListFile = dataFolder == null ? "" : Path.Combine(dataFolder.FullName, "info", "0", "video_music_list.xml");
+            if (String.IsNullOrWhiteSpace(graphicId) || !File.Exists(videoListFile))
+                return true;
+
+            XDocument document = XDocument.Load(videoListFile);
+            string normalizedId = graphicId.TrimStart('0');
+            XElement music = document.Descendants("music").FirstOrDefault(x =>
+                String.Equals((string)x.Attribute("id"), normalizedId, StringComparison.Ordinal));
+            XElement value = music?.Element("info")?.Element("play_video_flags");
+            return value == null || !Int32.TryParse(value.Value, out flags) || (flags & PlayVideoPoorFlag) != 0;
+        }
+
+        private static string GetBgaImageOutputName(string outputName)
+        {
+            if (String.IsNullOrWhiteSpace(outputName))
+                return "bga_image";
+
+            return Common.nameReplace(Path.GetFileNameWithoutExtension(outputName.Trim()));
+        }
+
+
+        private static string ResolveBgaImageGraphicFolder(string graphicRootOrFolder, string graphicId)
+        {
+            if (String.IsNullOrWhiteSpace(graphicRootOrFolder))
+                return "";
+
+            if (IsBgaImageGraphicFolder(graphicRootOrFolder))
+                return graphicRootOrFolder;
+
+            if (String.IsNullOrWhiteSpace(graphicId))
+                return "";
+
+            string normalizedId = Path.GetFileNameWithoutExtension(graphicId.Trim());
+            string candidate = Path.Combine(graphicRootOrFolder, normalizedId);
+            if (IsBgaImageGraphicFolder(candidate))
+                return candidate;
+
+            candidate = Path.Combine(graphicRootOrFolder, normalizedId.PadLeft(5, '0'));
+            return IsBgaImageGraphicFolder(candidate) ? candidate : "";
+        }
+
+        private static bool IsBgaImageGraphicFolder(string folder)
+        {
+            return Directory.Exists(Path.Combine(folder, "afp")) && Directory.Exists(Path.Combine(folder, "geo")) && Directory.Exists(Path.Combine(folder, "tex"));
+        }
+
+        private static List<int> RegisterBgaImageFrames(Chart chart, string chartFolder, List<string> frameFiles)
+        {
+            List<int> bmpIds = new List<int>();
+            int nextId = 2;
+            foreach (string frameFile in frameFiles)
+            {
+                nextId = FindAvailableBmpId(chart, nextId);
+                string relativePath = Path.GetRelativePath(chartFolder, frameFile);
+                chart.Tags["BMP" + Util.ConvertToBMEString(nextId, 2)] = relativePath;
+                bmpIds.Add(nextId);
+                nextId++;
+            }
+
+            return bmpIds;
+        }
+
+        private static int FindAvailableBmpId(Chart chart, int startId)
+        {
+            for (int id = Math.Max(2, startId); id < 1295; id++)
+            {
+                string tag = "BMP" + Util.ConvertToBMEString(id, 2);
+                if (!chart.Tags.ContainsKey(tag))
+                    return id;
+            }
+
+            throw new InvalidOperationException("No free BMP slot is available for BGA image.");
+        }
+
+        private static void AddBgaImageEvents(Chart chart, List<int> bmpIds, int fps, string channel)
+        {
+            if (bmpIds.Count == 0)
+                return;
+
+            Fraction bpm = chart.DefaultBPM.Numerator > 0 ? chart.DefaultBPM : new Fraction(120, 1);
+            for (int i = 0; i < bmpIds.Count; i++)
+            {
+                Fraction metric = new Fraction(i * bpm.Numerator, fps * 240L * bpm.Denominator);
+                int measure = (int)Math.Floor((double)metric);
+                Fraction offset = metric - new Fraction(measure, 1);
+
+                Entry entry = new Entry();
+                entry.Type = EntryType.BGA;
+                entry.Player = 0;
+                entry.Column = GetBgaImageColumn(channel);
+                entry.Value = new Fraction(bmpIds[i], 1);
+                entry.MetricMeasure = measure;
+                entry.MetricOffset = offset;
+                chart.Entries.Add(entry);
+            }
+
+            chart.Entries.Sort();
+        }
+
+
+        private static int GetBgaImageColumn(string channel)
+        {
+            string normalized = String.IsNullOrWhiteSpace(channel) ? "POOR" : channel.Trim().ToUpperInvariant();
+            switch (normalized)
+            {
+                case "BASE": return 0;
+                case "LAYER": return 1;
+                case "POOR": return 2;
+                case "LAYER2": return 3;
+                default:
+                    throw new ArgumentException("Invalid BGA image channel: " + channel);
+            }
+        }
         /// <summary>
         /// Copies supported movie files into the chart output folder.
         /// </summary>
@@ -1542,3 +1777,4 @@ namespace ConvertHelper
         }
     }
 }
+

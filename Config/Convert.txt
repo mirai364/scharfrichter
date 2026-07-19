@@ -32,6 +32,9 @@ OUTPUTRANK=3
 USEMOVIE=true
 OutputFormat=bms
 OptimizeBmsonSounds=false
+UseBgaImage=true
+BgaImageGraphicFolder=
+BgaImageOutputName=bga_image
 [DDR]
 DIFFICULTY1=1
 DIFFICULTY2=2

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Xml.Linq;
 
 namespace IIDXDBGenerator
 {
@@ -58,6 +59,22 @@ namespace IIDXDBGenerator
                 {
                     config[key][$"OVERLAY{i}"] = GetString(overlays[i], Constants.Enc932);
                 }
+            }
+        }
+
+        static private void SetPlayVideoFlags(Configuration config, string musicDataFile)
+        {
+            string videoListFile = Path.Combine(Path.GetDirectoryName(musicDataFile), "video_music_list.xml");
+            if (!File.Exists(videoListFile))
+                return;
+
+            XDocument document = XDocument.Load(videoListFile);
+            foreach (XElement music in document.Descendants("music"))
+            {
+                string id = (string)music.Attribute("id");
+                XElement flags = music.Element("info")?.Element("play_video_flags");
+                if (!String.IsNullOrWhiteSpace(id) && flags != null)
+                    config[id]["PLAYVIDEOFLAGS"] = flags.Value.Trim();
             }
         }
 
@@ -415,6 +432,7 @@ namespace IIDXDBGenerator
                     result = ConvertBelow20(reader, result, metaCount);
                 }
             }
+            SetPlayVideoFlags(result, sourceFileName);
             result.WriteFile("BeatmaniaDB");
         }
     }

@@ -216,7 +216,8 @@ namespace Scharfrichter.Codec.Archives
                             case "04": currentPlayer = 0; currentType = EntryType.BGA; currentColumn = 0; break;
                             case "05": currentPlayer = 0; currentType = EntryType.BGA; currentColumn = 1; break;
                             case "06": currentPlayer = 0; currentType = EntryType.BGA; currentColumn = 2; break;
-                            case "07": currentPlayer = 0; currentType = EntryType.BGA; currentColumn = 3; break;
+                            case "07": currentPlayer = 0; currentType = EntryType.BGA; currentColumn = 1; break;
+                            case "0A": currentPlayer = 0; currentType = EntryType.BGA; currentColumn = 3; break;
                             case "08": currentPlayer = 0; currentType = EntryType.Tempo; coding = ValueCoding.BPMTable; break;
                             case "11": currentPlayer = 1; currentType = EntryType.Marker; currentColumn = 0; break;
                             case "12": currentPlayer = 1; currentType = EntryType.Marker; currentColumn = 1; break;
@@ -837,7 +838,7 @@ namespace Scharfrichter.Codec.Archives
         /// </summary>
         private static string GetBgaLane(int column)
         {
-            string[] lanes = { "04", "06", "07", "0A" };
+            string[] lanes = { "04", "07", "06", "0A" };
             return lanes[column];
         }
 

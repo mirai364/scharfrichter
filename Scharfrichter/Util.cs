@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 
@@ -112,6 +112,7 @@ namespace Scharfrichter.Codec
         public static int PrimeCount = Primes.Length;
 
         public static string alphabetBME = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        public static string alphabetBMS62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
         public static string alphabetDec = "0123456789";
         public static string alphabetHex = "0123456789ABCDEF";
 
@@ -189,6 +190,25 @@ namespace Scharfrichter.Codec
         public static string ConvertToBMEString(int value, int places)
         {
             return ConvertToAlphabetString(value, places, alphabetBME);
+        }
+
+        /// <summary>
+        /// Converts an integer to a fixed-width BMS object identifier using the requested base.
+        /// </summary>
+        public static string ConvertToBMSObjectString(int value, int places, int objectBase)
+        {
+            return ConvertToAlphabetString(value, places, GetBMSObjectAlphabet(objectBase));
+        }
+
+        /// <summary>
+        /// Returns the alphabet used for BMS object identifiers in the requested base.
+        /// </summary>
+        public static string GetBMSObjectAlphabet(int objectBase)
+        {
+            if (objectBase == 62)
+                return alphabetBMS62;
+
+            return alphabetBME;
         }
 
         public static string ConvertToDecimalString(int value, int places)

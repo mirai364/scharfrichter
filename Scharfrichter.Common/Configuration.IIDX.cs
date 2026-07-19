@@ -17,6 +17,7 @@ namespace Scharfrichter.Common
             config["BMS"].SetDefaultString("MovieFolder", "");
             config["BMS"].SetDefaultString("Output", "");
             config["BMS"].SetDefaultString("OutputFormat", "bms");
+            config["BMS"].SetDefaultValue("BmsObjectBase", 62);
             config["BMS"].SetDefaultBool("OptimizeBmsonSounds", false);
             config["BMS"].SetDefaultBool("UseBgaImage", false);
             config["BMS"].SetDefaultString("BgaImageGraphicFolder", "");

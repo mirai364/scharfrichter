@@ -23,7 +23,7 @@ namespace ConvertHelper
         private const float DefaultSampleVolume = 0.6f;
         private const float FullSampleVolume = 1.0f;
         private const int PlayVideoPoorFlag = 0x02;
-        private const int BmsSampleLimit = 1295;
+        private const int DefaultBmsObjectBase = 62;
         private const double MaxPackedTrackSeconds = 600.0;
         private const double PackedSoundEventGapSeconds = 0.002;
         private const double PackedSoundTailPaddingSeconds = 1.000;
@@ -107,6 +107,7 @@ namespace ConvertHelper
             public bool UseBgaImage;
             public string BgaImageGraphicFolder;
             public string BgaImageOutputName;
+            public int BmsObjectBase;
         }
 
         /// <summary>
@@ -136,21 +137,22 @@ namespace ConvertHelper
         {
             int chartIndex;
             int sampleCount;
-            if (!IsBmsonOutput(config) && !idUseRenderAutoTip && ArchiveExceedsBmsSampleLimit(archive, out chartIndex, out sampleCount))
+            int sampleLimit = GetBmsObjectLimit(config);
+            if (!IsBmsonOutput(config) && !idUseRenderAutoTip && ArchiveExceedsBmsSampleLimit(archive, sampleLimit, out chartIndex, out sampleCount))
             {
-                RetryWithRenderAutoTip(filename, chartIndex, sampleCount);
+                RetryWithRenderAutoTip(filename, chartIndex, sampleCount, sampleLimit);
                 return;
             }
 
             bool isSuccess = ConvertArchiveCharts(archive, config, filename, updateTime, version);
             if (!isSuccess && !idUseRenderAutoTip)
-                RetryWithRenderAutoTip(filename, -1, -1);
+                RetryWithRenderAutoTip(filename, -1, -1, sampleLimit);
         }
 
         /// <summary>
         /// Checks whether any chart needs more BMS WAV tags than the format can represent.
         /// </summary>
-        private static bool ArchiveExceedsBmsSampleLimit(Archive archive, out int chartIndex, out int sampleCount)
+        private static bool ArchiveExceedsBmsSampleLimit(Archive archive, int sampleLimit, out int chartIndex, out int sampleCount)
         {
             chartIndex = -1;
             sampleCount = 0;
@@ -162,7 +164,7 @@ namespace ConvertHelper
                     continue;
 
                 int usedSamples = CountUniqueMarkerSamples(chart);
-                if (usedSamples > BmsSampleLimit)
+                if (usedSamples > sampleLimit)
                 {
                     chartIndex = i;
                     sampleCount = usedSamples;
@@ -195,14 +197,14 @@ namespace ConvertHelper
         /// <summary>
         /// Re-runs conversion with rendered auto-tip samples after the normal BMS sample limit is exceeded.
         /// </summary>
-        private static void RetryWithRenderAutoTip(string filename, int chartIndex, int sampleCount)
+        private static void RetryWithRenderAutoTip(string filename, int chartIndex, int sampleCount, int sampleLimit)
         {
             Console.WriteLine("");
             Console.WriteLine("");
             if (chartIndex >= 0)
-                Console.WriteLine("Chart " + chartIndex.ToString() + " uses " + sampleCount.ToString() + " sound sources, which is larger than the BMS limit of " + BmsSampleLimit.ToString() + ".");
+                Console.WriteLine("Chart " + chartIndex.ToString() + " uses " + sampleCount.ToString() + " sound sources, which is larger than the BMS limit of " + sampleLimit.ToString() + ".");
             else
-                Console.WriteLine("Because the number of sound sources is larger than " + BmsSampleLimit.ToString() + ", change the setting and re-execute.");
+                Console.WriteLine("Because the number of sound sources is larger than " + sampleLimit.ToString() + ", change the setting and re-execute.");
             Console.WriteLine("*------------------------------------------------------*");
             Convert(new string[] { filename }, ConverterTiming.StandardNumerator, ConverterTiming.StandardDenominator, true);
         }
@@ -965,7 +967,36 @@ namespace ConvertHelper
                 UseBgaImage = config["BMS"].GetBool("UseBgaImage"),
                 BgaImageGraphicFolder = config["BMS"].GetString("BgaImageGraphicFolder", ""),
                 BgaImageOutputName = config["BMS"].GetString("BgaImageOutputName", "bga_image"),
+                BmsObjectBase = GetBmsObjectBase(config),
             };
+        }
+
+        /// <summary>
+        /// Returns the BMS object identifier base from configuration.
+        /// </summary>
+        private static int GetBmsObjectBase(Configuration config)
+        {
+            if (config == null)
+                return DefaultBmsObjectBase;
+
+            int configuredBase = config["BMS"].GetValue("BmsObjectBase", DefaultBmsObjectBase);
+            return configuredBase == 36 ? 36 : 62;
+        }
+
+        /// <summary>
+        /// Returns the largest non-zero BMS object identifier available in the configured base.
+        /// </summary>
+        private static int GetBmsObjectLimit(Configuration config)
+        {
+            return GetBmsObjectLimit(GetBmsObjectBase(config));
+        }
+
+        /// <summary>
+        /// Returns the largest non-zero BMS object identifier available in the selected base.
+        /// </summary>
+        private static int GetBmsObjectLimit(int bmsObjectBase)
+        {
+            return (bmsObjectBase * bmsObjectBase) - 1;
         }
 
         /// <summary>
@@ -974,6 +1005,7 @@ namespace ConvertHelper
         private static BMS CreateBms(Chart chart, ChartOptions options, string filename)
         {
             BMS bms = new BMS();
+            bms.BmsObjectBase = options.BmsObjectBase;
             bms.Charts = new Chart[] { chart };
             Chart targetChart = bms.Charts[0];
             string name = GetChartName(chart, filename);
@@ -1130,7 +1162,7 @@ namespace ConvertHelper
             try
             {
                 AfpBgaFrameRenderer.RenderResult result = AfpBgaFrameRenderer.RenderFrames(graphicFolder, afpName, frameFolder, outputName);
-                List<int> bmpIds = RegisterBgaImageFrames(targetChart, dirPath, result.FrameFiles);
+                List<int> bmpIds = RegisterBgaImageFrames(targetChart, dirPath, result.FrameFiles, options.BmsObjectBase);
                 AddBgaImageEvents(targetChart, bmpIds, result.Fps, channel);
                 Console.WriteLine("BGA image WebM written: " + result.WebmFile);
             }
@@ -1201,15 +1233,18 @@ namespace ConvertHelper
             return Directory.Exists(Path.Combine(folder, "afp")) && Directory.Exists(Path.Combine(folder, "geo")) && Directory.Exists(Path.Combine(folder, "tex"));
         }
 
-        private static List<int> RegisterBgaImageFrames(Chart chart, string chartFolder, List<string> frameFiles)
+        /// <summary>
+        /// Registers rendered BGA frame files as BMP identifiers in the selected BMS object base.
+        /// </summary>
+        private static List<int> RegisterBgaImageFrames(Chart chart, string chartFolder, List<string> frameFiles, int bmsObjectBase)
         {
             List<int> bmpIds = new List<int>();
             int nextId = 2;
             foreach (string frameFile in frameFiles)
             {
-                nextId = FindAvailableBmpId(chart, nextId);
+                nextId = FindAvailableBmpId(chart, nextId, bmsObjectBase);
                 string relativePath = Path.GetRelativePath(chartFolder, frameFile);
-                chart.Tags["BMP" + Util.ConvertToBMEString(nextId, 2)] = relativePath;
+                chart.Tags["BMP" + Util.ConvertToBMSObjectString(nextId, 2, bmsObjectBase)] = relativePath;
                 bmpIds.Add(nextId);
                 nextId++;
             }
@@ -1217,11 +1252,15 @@ namespace ConvertHelper
             return bmpIds;
         }
 
-        private static int FindAvailableBmpId(Chart chart, int startId)
+        /// <summary>
+        /// Finds the next unused BMP identifier within the selected BMS object base.
+        /// </summary>
+        private static int FindAvailableBmpId(Chart chart, int startId, int bmsObjectBase)
         {
-            for (int id = Math.Max(2, startId); id < 1295; id++)
+            int maxObjectId = GetBmsObjectLimit(bmsObjectBase);
+            for (int id = Math.Max(2, startId); id <= maxObjectId; id++)
             {
-                string tag = "BMP" + Util.ConvertToBMEString(id, 2);
+                string tag = "BMP" + Util.ConvertToBMSObjectString(id, 2, bmsObjectBase);
                 if (!chart.Tags.ContainsKey(tag))
                     return id;
             }

@@ -20,11 +20,12 @@ namespace Scharfrichter.Codec.Archives
             BPMTable
         }
 
-        private const int MaxBmsObjectIndex = 1295;
+        private const int DefaultBmsObjectBase = 36;
         private Chart[] charts = new Chart[] { null };
         private int[] sampleMap;
         private Dictionary<int, int> reSampleMap = new Dictionary<int, int>();
         private string soundExtension = "ogg";
+        private int bmsObjectBase = DefaultBmsObjectBase;
 
         /// <summary>
         /// Initializes a BMS archive with the default one-to-one sample map.
@@ -70,6 +71,33 @@ namespace Scharfrichter.Codec.Archives
             set
             {
                 soundExtension = String.IsNullOrWhiteSpace(value) ? "ogg" : value.Trim().TrimStart('.').ToLowerInvariant();
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the numeric base used for two-character BMS object identifiers.
+        /// </summary>
+        public int BmsObjectBase
+        {
+            get
+            {
+                return bmsObjectBase;
+            }
+            set
+            {
+                bmsObjectBase = value == 36 ? 36 : 62;
+                ResetSampleMap();
+            }
+        }
+
+        /// <summary>
+        /// Gets the largest non-zero object identifier value available in the selected base.
+        /// </summary>
+        public int MaxBmsObjectIndex
+        {
+            get
+            {
+                return (bmsObjectBase * bmsObjectBase) - 1;
             }
         }
 
@@ -129,11 +157,11 @@ namespace Scharfrichter.Codec.Archives
             {
                 if (pair.Value >= MaxBmsObjectIndex)
                 {
-                    Console.WriteLine("WARNING: More than 1293 samples");
+                    Console.WriteLine("WARNING: More than " + MaxBmsObjectIndex.ToString() + " samples");
                     return false;
                 }
-                chart.Tags["WAV" + Util.ConvertToBMEString(pair.Value + 1, 2)] = targetFolder + Util.ConvertToBMEString(pair.Key, 4) + "." + SoundExtension;
-                //Console.WriteLine("WAV" + Util.ConvertToBMEString(pair.Value + 1, 2) + " " + targetFolder + Util.ConvertToBMEString(pair.Key, 4) + "." + SoundExtension);
+                chart.Tags["WAV" + Util.ConvertToBMSObjectString(pair.Value + 1, 2, bmsObjectBase)] = targetFolder + Util.ConvertToBMEString(pair.Key, 4) + "." + SoundExtension;
+                //Console.WriteLine("WAV" + Util.ConvertToBMSObjectString(pair.Value + 1, 2, bmsObjectBase) + " " + targetFolder + Util.ConvertToBMEString(pair.Key, 4) + "." + SoundExtension);
             }
 
             if (rendarWavName.Length > 0)
@@ -390,8 +418,8 @@ namespace Scharfrichter.Codec.Archives
         /// </summary>
         public void ResetSampleMap()
         {
-            sampleMap = new int[1295];
-            for (int i = 0; i < 1295; i++)
+            sampleMap = new int[MaxBmsObjectIndex + 1];
+            for (int i = 0; i < sampleMap.Length; i++)
             {
                 sampleMap[i] = i;
             }
@@ -410,11 +438,11 @@ namespace Scharfrichter.Codec.Archives
             {
                 int usedSampleCount = value.Length;
 
-                if (usedSampleCount > 1293)
-                    usedSampleCount = 1293;
+                if (usedSampleCount > MaxBmsObjectIndex)
+                    usedSampleCount = MaxBmsObjectIndex;
 
                 Array.Copy(value, 0, sampleMap, 1, usedSampleCount);
-                for (int i = usedSampleCount + 1; i < 1294; i++)
+                for (int i = usedSampleCount + 1; i < sampleMap.Length; i++)
                 {
                     sampleMap[i] = 0;
                 }
@@ -908,7 +936,7 @@ namespace Scharfrichter.Codec.Archives
             bool repeat = false;
             bool write = FillLaneValues(values, entries, currentType, common, commonDivisor, bpmMap, stopMap, headerWriter, ref bpmCount, ref repeat);
             if (write)
-                WriteBmsChannelLine(bodyWriter, measureString, laneString, values);
+                WriteBmsChannelLine(bodyWriter, measureString, laneString, values, bmsObjectBase);
             return repeat;
         }
 
@@ -944,9 +972,9 @@ namespace Scharfrichter.Codec.Archives
             if (currentType == EntryType.Marker)
                 return FillMarkerValues(values, entries, common, commonDivisor, ref repeat);
             if (currentType == EntryType.Stop)
-                return FillStopValues(values, entries, common, commonDivisor, stopMap, headerWriter, ref repeat);
+                return FillStopValues(values, entries, common, commonDivisor, stopMap, headerWriter, bmsObjectBase, ref repeat);
             if (currentType == EntryType.Tempo)
-                return FillTempoValues(values, entries, common, commonDivisor, bpmMap, headerWriter, ref bpmCount, ref repeat);
+                return FillTempoValues(values, entries, common, commonDivisor, bpmMap, headerWriter, bmsObjectBase, ref bpmCount, ref repeat);
             return FillRawValues(values, entries, common, commonDivisor, ref repeat);
         }
 
@@ -969,14 +997,14 @@ namespace Scharfrichter.Codec.Archives
         /// <summary>
         /// Fills STOP values and emits #STOP table definitions for new values.
         /// </summary>
-        private static bool FillStopValues(int[] values, List<Entry> entries, long common, long commonDivisor, Dictionary<int, Fraction> stopMap, StreamWriter headerWriter, ref bool repeat)
+        private static bool FillStopValues(int[] values, List<Entry> entries, long common, long commonDivisor, Dictionary<int, Fraction> stopMap, StreamWriter headerWriter, int bmsObjectBase, ref bool repeat)
         {
             bool write = false;
             foreach (Entry entry in entries)
             {
                 int offset = GetValueOffset(entry, common, commonDivisor);
                 int entryIndex = RegisterValue(stopMap, entry.Value);
-                headerWriter.WriteLine("#STOP" + Util.ConvertToBMEString(entryIndex, 2) + " " + Math.Round((double)entry.Value, 6).ToString());
+                headerWriter.WriteLine("#STOP" + Util.ConvertToBMSObjectString(entryIndex, 2, bmsObjectBase) + " " + Math.Round((double)entry.Value, 6).ToString());
                 if (TryPlaceValue(values, offset, entryIndex, entry, ref repeat))
                     write = true;
             }
@@ -986,13 +1014,13 @@ namespace Scharfrichter.Codec.Archives
         /// <summary>
         /// Fills BPM table values and emits #BPM table definitions for new values.
         /// </summary>
-        private static bool FillTempoValues(int[] values, List<Entry> entries, long common, long commonDivisor, Dictionary<int, Fraction> bpmMap, StreamWriter headerWriter, ref int bpmCount, ref bool repeat)
+        private static bool FillTempoValues(int[] values, List<Entry> entries, long common, long commonDivisor, Dictionary<int, Fraction> bpmMap, StreamWriter headerWriter, int bmsObjectBase, ref int bpmCount, ref bool repeat)
         {
             bool write = false;
             foreach (Entry entry in entries)
             {
                 int offset = GetValueOffset(entry, common, commonDivisor);
-                int entryIndex = GetOrRegisterBpm(bpmMap, headerWriter, entry.Value);
+                int entryIndex = GetOrRegisterBpm(bpmMap, headerWriter, entry.Value, bmsObjectBase);
                 bpmCount = Math.Max(bpmCount, entryIndex);
                 if (TryPlaceValue(values, offset, entryIndex, entry, ref repeat))
                     write = true;
@@ -1030,13 +1058,13 @@ namespace Scharfrichter.Codec.Archives
         /// <summary>
         /// Gets an existing BPM table index or emits a new #BPM definition.
         /// </summary>
-        private static int GetOrRegisterBpm(Dictionary<int, Fraction> bpmMap, StreamWriter headerWriter, Fraction value)
+        private static int GetOrRegisterBpm(Dictionary<int, Fraction> bpmMap, StreamWriter headerWriter, Fraction value, int bmsObjectBase)
         {
             foreach (KeyValuePair<int, Fraction> bpmEntry in bpmMap)
                 if (bpmEntry.Value == value)
                     return bpmEntry.Key;
             int entryIndex = RegisterValue(bpmMap, value);
-            headerWriter.WriteLine("#BPM" + Util.ConvertToBMEString(entryIndex, 2) + " " + Math.Round((double)value, 3).ToString());
+            headerWriter.WriteLine("#BPM" + Util.ConvertToBMSObjectString(entryIndex, 2, bmsObjectBase) + " " + Math.Round((double)value, 3).ToString());
             return entryIndex;
         }
 
@@ -1069,13 +1097,13 @@ namespace Scharfrichter.Codec.Archives
         /// <summary>
         /// Reduces and writes a BMS channel line to the body stream.
         /// </summary>
-        private static void WriteBmsChannelLine(StreamWriter bodyWriter, string measureString, string laneString, int[] values)
+        private static void WriteBmsChannelLine(StreamWriter bodyWriter, string measureString, string laneString, int[] values, int bmsObjectBase)
         {
             StringBuilder builder = new StringBuilder();
             values = Reduce(values);
             builder.Append("#" + measureString + laneString + ":");
             for (int i = 0; i < values.Length; i++)
-                builder.Append(Util.ConvertToBMEString(values[i], 2));
+                builder.Append(Util.ConvertToBMSObjectString(values[i], 2, bmsObjectBase));
             bodyWriter.WriteLine(builder.ToString());
         }
         /// <summary>

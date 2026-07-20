@@ -347,6 +347,7 @@ namespace ConvertHelper.Afp
             int maxX = Math.Min((int)Math.Max(Math.Max(p1.X, p2.X), Math.Max(p3.X, p4.X)) + 1, width);
             int minY = Math.Max((int)Math.Min(Math.Min(p1.Y, p2.Y), Math.Min(p3.Y, p4.Y)), 0);
             int maxY = Math.Min((int)Math.Max(Math.Max(p1.Y, p2.Y), Math.Max(p3.Y, p4.Y)) + 1, height);
+            if (minX >= maxX || minY >= maxY) return;
             bool identityColor = add.R == 0.0 && add.G == 0.0 && add.B == 0.0 && add.A == 0.0 &&
                 mult.R == 1.0 && mult.G == 1.0 && mult.B == 1.0 && mult.A == 1.0 && hsl.IsIdentity;
 

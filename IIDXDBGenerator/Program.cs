@@ -1,6 +1,5 @@
-﻿using Scharfrichter.Common;
+using Scharfrichter.Common;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Xml.Linq;
@@ -9,7 +8,6 @@ namespace IIDXDBGenerator
 {
     class Program
     {
-        // Define constants to eliminate magic numbers
         private static class Constants
         {
             public const int MagicIIDX = 0x58444949;
@@ -18,51 +16,243 @@ namespace IIDXDBGenerator
             public const int RecordSizeBelow27 = 800;
             public const int RecordSizeBelow20 = 828;
 
-            public static readonly Encoding Enc932;
-            public static readonly Encoding EncUtf16;
+            public const int OverlayCount = 9;
+            public const int OverlayNameLength = 32;
+            public const int MovieNameLength = 32;
 
-            static Constants()
-            {
-                Enc932 = Encoding.GetEncoding(932);
-                EncUtf16 = Encoding.Unicode;
-            }
+            public static readonly Encoding Enc932 = Encoding.GetEncoding(932);
+            public static readonly Encoding EncUtf16 = Encoding.Unicode;
         }
 
-        // Extract and decode strings appropriately based on encoding, 
-        // with strict null-character removal for safe INI file writing.
-        static private string GetString(byte[] source, Encoding encoding)
+        private sealed class MusicRecord
         {
-            if (source == null || source.Length == 0 || source[0] == 0) return string.Empty;
+            public int SongID;
+            public int Volume;
+            public int VideoDelay;
+            public int OverlayFlags;
+            public Encoding TextEncoding;
+            public byte[] RawTitle;
+            public byte[] RawEnglishTitle;
+            public byte[] RawGenre;
+            public byte[] RawArtist;
+            public byte[] RawMovie;
+            public byte[][] Overlays;
+            public int TextureTitle;
+            public int TextureArtist;
+            public int TextureGenre;
+            public int TextureLoad;
+            public int TextureList;
+            public int EntryFont;
+            public int Folder;
+            public int OtherFolder;
+            public int BemaniFolder;
+            public int SplittableDiff;
+        }
+
+        private sealed class MusicDataHeader
+        {
+            public int Version;
+            public int MetaCount;
+            public int EntryCount;
+        }
+
+        private static string GetString(byte[] source, Encoding encoding)
+        {
+            if (source == null || source.Length == 0 || source[0] == 0)
+                return string.Empty;
 
             if (encoding == Constants.EncUtf16)
-            {
-                // Faithfully replicate the original robust behavior for UTF-16:
-                // Decode the entire buffer and strip all nulls to handle malformed padding
                 return encoding.GetString(source).Replace("\0", "");
-            }
-            else
-            {
-                // For Shift-JIS, decode up to the first null byte and strip any remaining nulls
-                int nullIndex = Array.IndexOf(source, (byte)0);
-                int length = nullIndex >= 0 ? nullIndex : source.Length;
-                return encoding.GetString(source, 0, length).Replace("\0", "");
-            }
+
+            int nullIndex = Array.IndexOf(source, (byte)0);
+            int length = nullIndex >= 0 ? nullIndex : source.Length;
+            return encoding.GetString(source, 0, length).Replace("\0", "");
         }
 
-        // Extracted method for processing overlay data
-        static private void SetOverlayData(Configuration config, string key, int overlayFlags, byte[][] overlays)
+        private static void SkipBytes(BinaryReader reader, int count)
         {
-            if (overlayFlags == 0) return;
+            reader.BaseStream.Position += count;
+        }
+
+        private static byte[][] ReadOverlayNames(BinaryReader reader)
+        {
+            byte[][] overlays = new byte[Constants.OverlayCount][];
+            for (int i = 0; i < overlays.Length; i++)
+                overlays[i] = reader.ReadBytes(Constants.OverlayNameLength);
+            return overlays;
+        }
+
+        private static void MoveToNextRecord(BinaryReader reader, long recordStart, int recordSize)
+        {
+            reader.BaseStream.Position = recordStart + recordSize;
+        }
+
+        private static void ReadTextureFlags(BinaryReader reader, MusicRecord record)
+        {
+            record.TextureTitle = reader.ReadInt32();
+            record.TextureArtist = reader.ReadInt32();
+            record.TextureGenre = reader.ReadInt32();
+            record.TextureLoad = reader.ReadInt32();
+            record.TextureList = reader.ReadInt32();
+        }
+
+        private static void SetStringIfPresent(InfoCollection section, string key, byte[] rawValue, Encoding encoding)
+        {
+            if (rawValue != null && rawValue.Length > 0 && rawValue[0] != 0)
+                section[key] = GetString(rawValue, encoding);
+        }
+
+        private static void SetOverlayData(InfoCollection section, int overlayFlags, byte[][] overlays)
+        {
+            if (overlayFlags == 0)
+                return;
+
             for (int i = 0; i < overlays.Length; i++)
             {
-                if (overlays[i][0] != 0)
-                {
-                    config[key][$"OVERLAY{i}"] = GetString(overlays[i], Constants.Enc932);
-                }
+                if (overlays[i].Length > 0 && overlays[i][0] != 0)
+                    section[$"OVERLAY{i}"] = GetString(overlays[i], Constants.Enc932);
             }
         }
 
-        static private void SetPlayVideoFlags(Configuration config, string musicDataFile)
+        private static void WriteCommonFields(Configuration config, MusicRecord record)
+        {
+            InfoCollection section = config[record.SongID.ToString()];
+
+            SetStringIfPresent(section, "TITLE", record.RawTitle, record.TextEncoding);
+            SetStringIfPresent(section, "ENGLISHTITLE", record.RawEnglishTitle, Constants.Enc932);
+            SetStringIfPresent(section, "ARTIST", record.RawArtist, record.TextEncoding);
+            SetStringIfPresent(section, "GENRE", record.RawGenre, record.TextEncoding);
+            SetStringIfPresent(section, "VIDEO", record.RawMovie, Constants.Enc932);
+
+            SetOptionalValue(section, "TEXTURETITLE", record.TextureTitle);
+            SetOptionalValue(section, "TEXTUREARTIST", record.TextureArtist);
+            SetOptionalValue(section, "TEXTUREGENRE", record.TextureGenre);
+            SetOptionalValue(section, "TEXTURELOAD", record.TextureLoad);
+            SetOptionalValue(section, "TEXTURELIST", record.TextureList);
+            SetOptionalValue(section, "ENTRYFONT", record.EntryFont);
+            SetOptionalValue(section, "FOLDER", record.Folder);
+            SetOptionalValue(section, "OTHERFOLDER", record.OtherFolder);
+            SetOptionalValue(section, "BEMANIFOLDER", record.BemaniFolder);
+            SetOptionalValue(section, "SPLITTABLEDIFF", record.SplittableDiff);
+
+            section["VIDEODELAY"] = record.VideoDelay.ToString();
+            if (record.Volume > 0)
+                section["VOLUME"] = record.Volume.ToString();
+
+            SetOverlayData(section, record.OverlayFlags, record.Overlays);
+        }
+
+        private static void WriteCurrentDifficultyFields(Configuration config, int songID, byte[] values)
+        {
+            InfoCollection section = config[songID.ToString()];
+
+            SetValue(section, "DIFFICULTYSP0", values[0]);
+            SetValue(section, "DIFFICULTYSP1", values[0]);
+            SetValue(section, "DIFFICULTYSP2", values[1]);
+            SetValue(section, "DIFFICULTYSP3", values[2]);
+            SetValue(section, "DIFFICULTYSP4", values[3]);
+            SetValue(section, "DIFFICULTYSP5", values[4]);
+
+            SetValue(section, "DIFFICULTYDP0", values[5]);
+            SetValue(section, "DIFFICULTYDP1", values[5]);
+            SetValue(section, "DIFFICULTYDP2", values[6]);
+            SetValue(section, "DIFFICULTYDP3", values[7]);
+            SetValue(section, "DIFFICULTYDP4", values[8]);
+            SetValue(section, "DIFFICULTYDP5", values[9]);
+        }
+
+        private static void WriteCurrentKeysetFields(Configuration config, int songID, byte[] values)
+        {
+            InfoCollection section = config[songID.ToString()];
+
+            SetChar(section, "KEYSETSP0", values[0]);
+            SetChar(section, "KEYSETSP1", values[0]);
+            SetChar(section, "KEYSETSP2", values[1]);
+            SetChar(section, "KEYSETSP3", values[2]);
+            SetChar(section, "KEYSETSP4", values[3]);
+            SetChar(section, "KEYSETSP5", values[4]);
+
+            SetChar(section, "KEYSETDP0", values[5]);
+            SetChar(section, "KEYSETDP1", values[5]);
+            SetChar(section, "KEYSETDP2", values[6]);
+            SetChar(section, "KEYSETDP3", values[7]);
+            SetChar(section, "KEYSETDP4", values[8]);
+            SetChar(section, "KEYSETDP5", values[9]);
+        }
+
+        private static void WriteLegacyDifficultyFields(Configuration config, int songID, byte[] values)
+        {
+            InfoCollection section = config[songID.ToString()];
+
+            SetValue(section, "DIFFICULTYSP0", values[6]);
+            SetValue(section, "DIFFICULTYSP1", values[6]);
+            if (values[0] > 0)
+            {
+                if (values[6] <= 0)
+                    section["DIFFICULTYSP1"] = values[0].ToString();
+                section["DIFFICULTYSP2"] = values[0].ToString();
+            }
+            SetValue(section, "DIFFICULTYSP3", values[1]);
+            SetValue(section, "DIFFICULTYSP4", values[2]);
+
+            SetValue(section, "DIFFICULTYDP0", values[7]);
+            SetValue(section, "DIFFICULTYDP1", values[7]);
+            if (values[3] > 0)
+            {
+                if (values[7] <= 0)
+                    section["DIFFICULTYDP1"] = values[3].ToString();
+                section["DIFFICULTYDP2"] = values[3].ToString();
+            }
+            SetValue(section, "DIFFICULTYDP3", values[4]);
+            SetValue(section, "DIFFICULTYDP4", values[5]);
+        }
+
+        private static void WriteLegacyKeysetFields(Configuration config, int songID, byte[] values)
+        {
+            InfoCollection section = config[songID.ToString()];
+
+            SetChar(section, "KEYSETSP0", values[6]);
+            SetChar(section, "KEYSETSP1", values[6]);
+            if (values[0] > 0)
+            {
+                if (values[6] <= 0)
+                    section["KEYSETSP1"] = ((char)values[0]).ToString();
+                section["KEYSETSP2"] = ((char)values[0]).ToString();
+            }
+            SetChar(section, "KEYSETSP3", values[1]);
+            SetChar(section, "KEYSETSP4", values[2]);
+
+            SetChar(section, "KEYSETDP0", values[7]);
+            SetChar(section, "KEYSETDP1", values[7]);
+            if (values[3] > 0)
+            {
+                if (values[7] <= 0)
+                    section["KEYSETDP1"] = ((char)values[3]).ToString();
+                section["KEYSETDP2"] = ((char)values[3]).ToString();
+            }
+            SetChar(section, "KEYSETDP3", values[4]);
+            SetChar(section, "KEYSETDP4", values[5]);
+        }
+
+        private static void SetOptionalValue(InfoCollection section, string key, int value)
+        {
+            if (value > 0)
+                section[key] = value.ToString();
+        }
+
+        private static void SetValue(InfoCollection section, string key, byte value)
+        {
+            if (value > 0)
+                section[key] = value.ToString();
+        }
+
+        private static void SetChar(InfoCollection section, string key, byte value)
+        {
+            if (value > 0)
+                section[key] = ((char)value).ToString();
+        }
+
+        private static void SetPlayVideoFlags(Configuration config, string musicDataFile)
         {
             string videoListFile = Path.Combine(Path.GetDirectoryName(musicDataFile), "video_music_list.xml");
             if (!File.Exists(videoListFile))
@@ -78,288 +268,257 @@ namespace IIDXDBGenerator
             }
         }
 
-        static private Configuration ConvertV32(BinaryReader reader, Configuration result, int metaCount)
+        private static Configuration ConvertV32(BinaryReader reader, Configuration result, int metaCount)
         {
             for (int i = 0; i < metaCount; i++)
             {
                 long startPos = reader.BaseStream.Position;
 
-                byte[] rawTitle = reader.ReadBytes(256);
-                reader.BaseStream.Position += 64; // Skip rawTitleTranslit
-                byte[] rawGenre = reader.ReadBytes(128);
-                byte[] rawArtist = reader.ReadBytes(256);
-                reader.BaseStream.Position += 300; // Skip unknown
+                MusicRecord record = new MusicRecord();
+                record.TextEncoding = Constants.EncUtf16;
+                record.RawTitle = reader.ReadBytes(256);
+                record.RawEnglishTitle = reader.ReadBytes(64);
+                record.RawGenre = reader.ReadBytes(128);
+                record.RawArtist = reader.ReadBytes(256);
+                SkipBytes(reader, 256); // rights/licensing memo, currently unused
+                ReadTextureFlags(reader, record);
+                SkipBytes(reader, 4); // v32-only rights/licensing type, currently unused
+                record.EntryFont = reader.ReadInt32();
+                record.Folder = reader.ReadByte();
+                SkipBytes(reader, 1); // padding
+                record.OtherFolder = reader.ReadUInt16();
+                record.BemaniFolder = reader.ReadUInt16();
+                SkipBytes(reader, 6); // v32-only reserved/unknown metadata flags
+                record.SplittableDiff = reader.ReadUInt16();
+                SkipBytes(reader, 2); // padding
 
-                byte[] diffs = reader.ReadBytes(10); // Difficulty SP 0-4 + DP 5-9
-                reader.BaseStream.Position += 646; // Skip unknown
+                byte[] difficulties = reader.ReadBytes(10); // SP BEGINNER..LEGGENDARIA, DP BEGINNER..LEGGENDARIA
+                SkipBytes(reader, 646); // zero-filled reserved chart metadata block before IDs
 
-                int songID = reader.ReadUInt16();
-                reader.BaseStream.Position += 2; // Skip version, afp_flag
-                int volume = reader.ReadInt32();
-
-                byte[] keysets = reader.ReadBytes(10); // Keyset SP 0-4 + DP 5-9
-
-                int bgaDelay = reader.ReadInt16();
-                byte[] rawMovie = reader.ReadBytes(32);
-                int overlayFlags = reader.ReadInt32();
-
-                byte[][] overlays = new byte[9][];
-                for (int o = 0; o < 9; o++) overlays[o] = reader.ReadBytes(32);
-
-                reader.BaseStream.Position = startPos + Constants.RecordSizeV32;
-
-                string key = songID.ToString();
-
-                // Assign directly to ensure the Configuration library properly tracks new sections
-                if (rawTitle[0] != 0) result[key]["TITLE"] = GetString(rawTitle, Constants.EncUtf16);
-                if (rawArtist[0] != 0) result[key]["ARTIST"] = GetString(rawArtist, Constants.EncUtf16);
-                if (rawGenre[0] != 0) result[key]["GENRE"] = GetString(rawGenre, Constants.EncUtf16);
-                if (rawMovie[0] != 0) result[key]["VIDEO"] = GetString(rawMovie, Constants.Enc932);
-
-                result[key]["VIDEODELAY"] = bgaDelay.ToString();
-                if (volume > 0) result[key]["VOLUME"] = volume.ToString();
-
-                SetOverlayData(result, key, overlayFlags, overlays);
-
-                if (diffs[0] > 0) { result[key]["DIFFICULTYSP0"] = diffs[0].ToString(); result[key]["DIFFICULTYSP1"] = diffs[0].ToString(); }
-                if (diffs[1] > 0) result[key]["DIFFICULTYSP2"] = diffs[1].ToString();
-                if (diffs[2] > 0) result[key]["DIFFICULTYSP3"] = diffs[2].ToString();
-                if (diffs[3] > 0) result[key]["DIFFICULTYSP4"] = diffs[3].ToString();
-                if (diffs[4] > 0) result[key]["DIFFICULTYSP5"] = diffs[4].ToString();
-
-                if (diffs[5] > 0) { result[key]["DIFFICULTYDP0"] = diffs[5].ToString(); result[key]["DIFFICULTYDP1"] = diffs[5].ToString(); }
-                if (diffs[6] > 0) result[key]["DIFFICULTYDP2"] = diffs[6].ToString();
-                if (diffs[7] > 0) result[key]["DIFFICULTYDP3"] = diffs[7].ToString();
-                if (diffs[8] > 0) result[key]["DIFFICULTYDP4"] = diffs[8].ToString();
-                if (diffs[9] > 0) result[key]["DIFFICULTYDP5"] = diffs[9].ToString();
-
-                if (keysets[0] > 0) { result[key]["KEYSETSP0"] = ((char)keysets[0]).ToString(); result[key]["KEYSETSP1"] = ((char)keysets[0]).ToString(); }
-                if (keysets[1] > 0) result[key]["KEYSETSP2"] = ((char)keysets[1]).ToString();
-                if (keysets[2] > 0) result[key]["KEYSETSP3"] = ((char)keysets[2]).ToString();
-                if (keysets[3] > 0) result[key]["KEYSETSP4"] = ((char)keysets[3]).ToString();
-                if (keysets[4] > 0) result[key]["KEYSETSP5"] = ((char)keysets[4]).ToString();
-
-                if (keysets[5] > 0) { result[key]["KEYSETDP0"] = ((char)keysets[5]).ToString(); result[key]["KEYSETDP1"] = ((char)keysets[5]).ToString(); }
-                if (keysets[6] > 0) result[key]["KEYSETDP2"] = ((char)keysets[6]).ToString();
-                if (keysets[7] > 0) result[key]["KEYSETDP3"] = ((char)keysets[7]).ToString();
-                if (keysets[8] > 0) result[key]["KEYSETDP4"] = ((char)keysets[8]).ToString();
-                if (keysets[9] > 0) result[key]["KEYSETDP5"] = ((char)keysets[9]).ToString();
-            }
-            return result;
-        }
-
-        static private Configuration ConvertBelow32(BinaryReader reader, Configuration result, int metaCount)
-        {
-            for (int i = 0; i < metaCount; i++)
-            {
-                long startPos = reader.BaseStream.Position;
-
-                byte[] rawTitle = reader.ReadBytes(64);
-                reader.BaseStream.Position += 64;
-                byte[] rawGenre = reader.ReadBytes(64);
-                byte[] rawArtist = reader.ReadBytes(64);
-                reader.BaseStream.Position += 32;
-
-                byte[] diffs = reader.ReadBytes(10);
-                reader.BaseStream.Position += 646;
-
-                int songID = reader.ReadInt16();
-                reader.BaseStream.Position += 2;
-                int volume = reader.ReadInt32();
+                record.SongID = reader.ReadUInt16();
+                SkipBytes(reader, 2); // version, afp_flag
+                record.Volume = reader.ReadInt32();
 
                 byte[] keysets = reader.ReadBytes(10);
+                record.VideoDelay = reader.ReadInt16();
+                record.RawMovie = reader.ReadBytes(Constants.MovieNameLength);
+                record.OverlayFlags = reader.ReadInt32();
+                record.Overlays = ReadOverlayNames(reader);
 
-                int bgaDelay = reader.ReadInt16();
-                byte[] rawMovie = reader.ReadBytes(32);
-                int overlayFlags = reader.ReadInt32();
+                MoveToNextRecord(reader, startPos, Constants.RecordSizeV32);
 
-                byte[][] overlays = new byte[9][];
-                for (int o = 0; o < 9; o++) overlays[o] = reader.ReadBytes(32);
-
-                reader.BaseStream.Position = startPos + Constants.RecordSizeBelow32;
-
-                string key = songID.ToString();
-
-                if (rawTitle[0] != 0) result[key]["TITLE"] = GetString(rawTitle, Constants.Enc932);
-                if (rawArtist[0] != 0) result[key]["ARTIST"] = GetString(rawArtist, Constants.Enc932);
-                if (rawGenre[0] != 0) result[key]["GENRE"] = GetString(rawGenre, Constants.Enc932);
-                if (rawMovie[0] != 0) result[key]["VIDEO"] = GetString(rawMovie, Constants.Enc932);
-
-                result[key]["VIDEODELAY"] = bgaDelay.ToString();
-                if (volume > 0) result[key]["VOLUME"] = volume.ToString();
-
-                SetOverlayData(result, key, overlayFlags, overlays);
-
-                if (diffs[0] > 0) { result[key]["DIFFICULTYSP0"] = diffs[0].ToString(); result[key]["DIFFICULTYSP1"] = diffs[0].ToString(); }
-                if (diffs[1] > 0) result[key]["DIFFICULTYSP2"] = diffs[1].ToString();
-                if (diffs[2] > 0) result[key]["DIFFICULTYSP3"] = diffs[2].ToString();
-                if (diffs[3] > 0) result[key]["DIFFICULTYSP4"] = diffs[3].ToString();
-                if (diffs[4] > 0) result[key]["DIFFICULTYSP5"] = diffs[4].ToString();
-
-                if (diffs[5] > 0) { result[key]["DIFFICULTYDP0"] = diffs[5].ToString(); result[key]["DIFFICULTYDP1"] = diffs[5].ToString(); }
-                if (diffs[6] > 0) result[key]["DIFFICULTYDP2"] = diffs[6].ToString();
-                if (diffs[7] > 0) result[key]["DIFFICULTYDP3"] = diffs[7].ToString();
-                if (diffs[8] > 0) result[key]["DIFFICULTYDP4"] = diffs[8].ToString();
-                if (diffs[9] > 0) result[key]["DIFFICULTYDP5"] = diffs[9].ToString();
-
-                if (keysets[0] > 0) { result[key]["KEYSETSP0"] = ((char)keysets[0]).ToString(); result[key]["KEYSETSP1"] = ((char)keysets[0]).ToString(); }
-                if (keysets[1] > 0) result[key]["KEYSETSP2"] = ((char)keysets[1]).ToString();
-                if (keysets[2] > 0) result[key]["KEYSETSP3"] = ((char)keysets[2]).ToString();
-                if (keysets[3] > 0) result[key]["KEYSETSP4"] = ((char)keysets[3]).ToString();
-                if (keysets[4] > 0) result[key]["KEYSETSP5"] = ((char)keysets[4]).ToString();
-
-                if (keysets[5] > 0) { result[key]["KEYSETDP0"] = ((char)keysets[5]).ToString(); result[key]["KEYSETDP1"] = ((char)keysets[5]).ToString(); }
-                if (keysets[6] > 0) result[key]["KEYSETDP2"] = ((char)keysets[6]).ToString();
-                if (keysets[7] > 0) result[key]["KEYSETDP3"] = ((char)keysets[7]).ToString();
-                if (keysets[8] > 0) result[key]["KEYSETDP4"] = ((char)keysets[8]).ToString();
-                if (keysets[9] > 0) result[key]["KEYSETDP5"] = ((char)keysets[9]).ToString();
+                WriteCommonFields(result, record);
+                WriteCurrentDifficultyFields(result, record.SongID, difficulties);
+                WriteCurrentKeysetFields(result, record.SongID, keysets);
             }
+
             return result;
         }
 
-        static private Configuration ConvertBelow27(BinaryReader reader, Configuration result, int metaCount, int musicDataVersion)
+        private static Configuration ConvertBelow32(BinaryReader reader, Configuration result, int metaCount)
+        {
+            for (int i = 0; i < metaCount; i++)
+            {
+                long startPos = reader.BaseStream.Position;
+
+                MusicRecord record = new MusicRecord();
+                record.TextEncoding = Constants.Enc932;
+                record.RawTitle = reader.ReadBytes(64);
+                record.RawEnglishTitle = reader.ReadBytes(64);
+                record.RawGenre = reader.ReadBytes(64);
+                record.RawArtist = reader.ReadBytes(64);
+                ReadTextureFlags(reader, record);
+                record.EntryFont = reader.ReadInt32();
+                record.Folder = reader.ReadByte();
+                SkipBytes(reader, 1); // padding
+                record.OtherFolder = reader.ReadUInt16();
+                record.BemaniFolder = reader.ReadUInt16();
+                record.SplittableDiff = reader.ReadUInt16();
+
+                byte[] difficulties = reader.ReadBytes(10);
+                SkipBytes(reader, 646); // reserved chart metadata block with fixed legacy markers
+
+                record.SongID = reader.ReadInt16();
+                SkipBytes(reader, 2); // version, afp_flag
+                record.Volume = reader.ReadInt32();
+
+                byte[] keysets = reader.ReadBytes(10);
+                record.VideoDelay = reader.ReadInt16();
+                record.RawMovie = reader.ReadBytes(Constants.MovieNameLength);
+                record.OverlayFlags = reader.ReadInt32();
+                record.Overlays = ReadOverlayNames(reader);
+
+                MoveToNextRecord(reader, startPos, Constants.RecordSizeBelow32);
+
+                WriteCommonFields(result, record);
+                WriteCurrentDifficultyFields(result, record.SongID, difficulties);
+                WriteCurrentKeysetFields(result, record.SongID, keysets);
+            }
+
+            return result;
+        }
+
+        private static Configuration ConvertBelow27(BinaryReader reader, Configuration result, int metaCount, int musicDataVersion)
+        {
+            int recordStride = GetBelow27RecordStride(musicDataVersion);
+
+            for (int i = 0; i < metaCount; i++)
+            {
+                long startPos = reader.BaseStream.Position;
+
+                MusicRecord record = new MusicRecord();
+                record.TextEncoding = Constants.Enc932;
+                record.RawTitle = reader.ReadBytes(64);
+                record.RawEnglishTitle = reader.ReadBytes(64);
+                record.RawGenre = reader.ReadBytes(64);
+                record.RawArtist = reader.ReadBytes(64);
+                ReadTextureFlags(reader, record);
+                record.EntryFont = reader.ReadInt32();
+                record.Folder = reader.ReadByte();
+                SkipBytes(reader, 1); // padding
+                record.OtherFolder = reader.ReadUInt16();
+                record.BemaniFolder = reader.ReadUInt16();
+                record.SplittableDiff = reader.ReadUInt16();
+
+                byte[] difficulties = reader.ReadBytes(8);
+                SkipBytes(reader, 160); // zero-filled reserved chart metadata block before IDs
+
+                record.SongID = reader.ReadInt16();
+                SkipBytes(reader, 2); // version, afp_flag
+                record.Volume = reader.ReadInt32();
+
+                byte[] keysets = reader.ReadBytes(8);
+                record.VideoDelay = reader.ReadInt16();
+                SkipBytes(reader, 2); // reserved/unknown movie field
+                record.RawMovie = reader.ReadBytes(Constants.MovieNameLength);
+                record.OverlayFlags = reader.ReadInt32();
+                record.Overlays = ReadOverlayNames(reader);
+
+                MoveToNextRecord(reader, startPos, recordStride);
+
+                WriteCommonFields(result, record);
+                WriteLegacyDifficultyFields(result, record.SongID, difficulties);
+                WriteLegacyKeysetFields(result, record.SongID, keysets);
+            }
+
+            return result;
+        }
+
+        private static Configuration ConvertBelow20(BinaryReader reader, Configuration result, int metaCount)
+        {
+            for (int i = 0; i < metaCount; i++)
+            {
+                long startPos = reader.BaseStream.Position;
+
+                MusicRecord record = new MusicRecord();
+                record.TextEncoding = Constants.Enc932;
+                record.RawTitle = reader.ReadBytes(64);
+                record.RawEnglishTitle = reader.ReadBytes(64);
+                SkipBytes(reader, 32); // reserved/unknown metadata
+                record.RawGenre = reader.ReadBytes(32);
+                record.RawArtist = reader.ReadBytes(32);
+                SkipBytes(reader, 8); // reserved/unknown metadata
+
+                byte[] difficulties = reader.ReadBytes(8);
+                SkipBytes(reader, 180); // reserved/unknown metadata block before IDs
+
+                record.SongID = reader.ReadInt16();
+                SkipBytes(reader, 2); // version, afp_flag
+                record.Volume = reader.ReadInt32();
+
+                byte[] keysets = reader.ReadBytes(8);
+                record.VideoDelay = reader.ReadInt16();
+                SkipBytes(reader, 2); // reserved/unknown movie field
+                record.RawMovie = reader.ReadBytes(Constants.MovieNameLength);
+                SkipBytes(reader, 64); // reserved/unknown movie metadata
+                record.OverlayFlags = reader.ReadInt32();
+                record.Overlays = ReadOverlayNames(reader);
+
+                MoveToNextRecord(reader, startPos, Constants.RecordSizeBelow20);
+
+                record.SongID = NormalizePreV20SongID(record.SongID);
+
+                WriteCommonFields(result, record);
+                WriteLegacyDifficultyFields(result, record.SongID, difficulties);
+                WriteLegacyKeysetFields(result, record.SongID, keysets);
+            }
+
+            return result;
+        }
+
+        private static int GetBelow27RecordStride(int musicDataVersion)
         {
             int recordStride = Constants.RecordSizeBelow27;
             if (musicDataVersion < 80)
             {
-                if (musicDataVersion > 25) recordStride += 36;
-                else if (musicDataVersion > 21) recordStride += 32;
+                if (musicDataVersion > 25)
+                    recordStride += 36;
+                else if (musicDataVersion > 21)
+                    recordStride += 32;
             }
-
-            for (int i = 0; i < metaCount; i++)
-            {
-                long startPos = reader.BaseStream.Position;
-
-                byte[] rawTitle = reader.ReadBytes(64);
-                reader.BaseStream.Position += 64;
-                byte[] rawGenre = reader.ReadBytes(64);
-                byte[] rawArtist = reader.ReadBytes(64);
-                reader.BaseStream.Position += 32;
-
-                byte[] diffs = reader.ReadBytes(8);
-                reader.BaseStream.Position += 160;
-
-                int songID = reader.ReadInt16();
-                reader.BaseStream.Position += 2;
-                int volume = reader.ReadInt32();
-
-                byte[] keysets = reader.ReadBytes(8);
-
-                int bgaDelay = reader.ReadInt16();
-                reader.BaseStream.Position += 2;
-                byte[] rawMovie = reader.ReadBytes(32);
-                int overlayFlags = reader.ReadInt32();
-
-                byte[][] overlays = new byte[9][];
-                for (int o = 0; o < 9; o++) overlays[o] = reader.ReadBytes(32);
-
-                reader.BaseStream.Position = startPos + recordStride;
-
-                string key = songID.ToString();
-
-                if (rawTitle[0] != 0) result[key]["TITLE"] = GetString(rawTitle, Constants.Enc932);
-                if (rawArtist[0] != 0) result[key]["ARTIST"] = GetString(rawArtist, Constants.Enc932);
-                if (rawGenre[0] != 0) result[key]["GENRE"] = GetString(rawGenre, Constants.Enc932);
-                if (rawMovie[0] != 0) result[key]["VIDEO"] = GetString(rawMovie, Constants.Enc932);
-
-                result[key]["VIDEODELAY"] = bgaDelay.ToString();
-                if (volume > 0) result[key]["VOLUME"] = volume.ToString();
-
-                SetOverlayData(result, key, overlayFlags, overlays);
-
-                if (diffs[6] > 0) { result[key]["DIFFICULTYSP0"] = diffs[6].ToString(); result[key]["DIFFICULTYSP1"] = diffs[6].ToString(); }
-                if (diffs[0] > 0) { if (diffs[6] <= 0) result[key]["DIFFICULTYSP1"] = diffs[0].ToString(); result[key]["DIFFICULTYSP2"] = diffs[0].ToString(); }
-                if (diffs[1] > 0) result[key]["DIFFICULTYSP3"] = diffs[1].ToString();
-                if (diffs[2] > 0) result[key]["DIFFICULTYSP4"] = diffs[2].ToString();
-
-                if (diffs[7] > 0) { result[key]["DIFFICULTYDP0"] = diffs[7].ToString(); result[key]["DIFFICULTYDP1"] = diffs[7].ToString(); }
-                if (diffs[3] > 0) { if (diffs[7] <= 0) result[key]["DIFFICULTYDP1"] = diffs[3].ToString(); result[key]["DIFFICULTYDP2"] = diffs[3].ToString(); }
-                if (diffs[4] > 0) result[key]["DIFFICULTYDP3"] = diffs[4].ToString();
-                if (diffs[5] > 0) result[key]["DIFFICULTYDP4"] = diffs[5].ToString();
-
-                if (keysets[6] > 0) { result[key]["KEYSETSP0"] = ((char)keysets[6]).ToString(); result[key]["KEYSETSP1"] = ((char)keysets[6]).ToString(); }
-                if (keysets[0] > 0) { if (keysets[6] <= 0) result[key]["KEYSETSP1"] = ((char)keysets[0]).ToString(); result[key]["KEYSETSP2"] = ((char)keysets[0]).ToString(); }
-                if (keysets[1] > 0) result[key]["KEYSETSP3"] = ((char)keysets[1]).ToString();
-                if (keysets[2] > 0) result[key]["KEYSETSP4"] = ((char)keysets[2]).ToString();
-
-                if (keysets[7] > 0) { result[key]["KEYSETDP0"] = ((char)keysets[7]).ToString(); result[key]["KEYSETDP1"] = ((char)keysets[7]).ToString(); }
-                if (keysets[3] > 0) { if (keysets[7] <= 0) result[key]["KEYSETDP1"] = ((char)keysets[3]).ToString(); result[key]["KEYSETDP2"] = ((char)keysets[3]).ToString(); }
-                if (keysets[4] > 0) result[key]["KEYSETDP3"] = ((char)keysets[4]).ToString();
-                if (keysets[5] > 0) result[key]["KEYSETDP4"] = ((char)keysets[5]).ToString();
-            }
-            return result;
+            return recordStride;
         }
 
-        static private Configuration ConvertBelow20(BinaryReader reader, Configuration result, int metaCount)
+        private static int NormalizePreV20SongID(int songID)
         {
-            for (int i = 0; i < metaCount; i++)
+            int version = songID / 100;
+            int sub = songID - version * 100;
+            return version * 1000 + sub;
+        }
+
+        private static MusicDataHeader ReadHeader(BinaryReader reader)
+        {
+            if (reader.ReadInt32() != Constants.MagicIIDX)
+                return null;
+
+            MusicDataHeader header = new MusicDataHeader();
+            header.Version = reader.ReadInt32();
+
+            if (header.Version >= 32)
             {
-                long startPos = reader.BaseStream.Position;
-
-                byte[] rawTitle = reader.ReadBytes(64);
-                reader.BaseStream.Position += 96;
-                byte[] rawGenre = reader.ReadBytes(32);
-                byte[] rawArtist = reader.ReadBytes(32);
-                reader.BaseStream.Position += 8;
-
-                byte[] diffs = reader.ReadBytes(8);
-                reader.BaseStream.Position += 180;
-
-                int songID = reader.ReadInt16();
-                reader.BaseStream.Position += 2;
-                int volume = reader.ReadInt32();
-
-                byte[] keysets = reader.ReadBytes(8);
-
-                int bgaDelay = reader.ReadInt16();
-                reader.BaseStream.Position += 2;
-                byte[] rawMovie = reader.ReadBytes(32);
-                reader.BaseStream.Position += 64;
-
-                int overlayFlags = reader.ReadInt32();
-
-                byte[][] overlays = new byte[9][];
-                for (int o = 0; o < 9; o++) overlays[o] = reader.ReadBytes(32);
-
-                reader.BaseStream.Position = startPos + Constants.RecordSizeBelow20;
-
-                int version = songID / 100;
-                int sub = songID - version * 100;
-                songID = version * 1000 + sub;
-
-                string key = songID.ToString();
-
-                if (rawTitle[0] != 0) result[key]["TITLE"] = GetString(rawTitle, Constants.Enc932);
-                if (rawArtist[0] != 0) result[key]["ARTIST"] = GetString(rawArtist, Constants.Enc932);
-                if (rawGenre[0] != 0) result[key]["GENRE"] = GetString(rawGenre, Constants.Enc932);
-                if (rawMovie[0] != 0) result[key]["VIDEO"] = GetString(rawMovie, Constants.Enc932);
-
-                result[key]["VIDEODELAY"] = bgaDelay.ToString();
-                if (volume > 0) result[key]["VOLUME"] = volume.ToString();
-
-                SetOverlayData(result, key, overlayFlags, overlays);
-
-                if (diffs[6] > 0) { result[key]["DIFFICULTYSP0"] = diffs[6].ToString(); result[key]["DIFFICULTYSP1"] = diffs[6].ToString(); }
-                if (diffs[0] > 0) { if (diffs[6] <= 0) result[key]["DIFFICULTYSP1"] = diffs[0].ToString(); result[key]["DIFFICULTYSP2"] = diffs[0].ToString(); }
-                if (diffs[1] > 0) result[key]["DIFFICULTYSP3"] = diffs[1].ToString();
-                if (diffs[2] > 0) result[key]["DIFFICULTYSP4"] = diffs[2].ToString();
-
-                if (diffs[7] > 0) { result[key]["DIFFICULTYDP0"] = diffs[7].ToString(); result[key]["DIFFICULTYDP1"] = diffs[7].ToString(); }
-                if (diffs[3] > 0) { if (diffs[7] <= 0) result[key]["DIFFICULTYDP1"] = diffs[3].ToString(); result[key]["DIFFICULTYDP2"] = diffs[3].ToString(); }
-                if (diffs[4] > 0) result[key]["DIFFICULTYDP3"] = diffs[4].ToString();
-                if (diffs[5] > 0) result[key]["DIFFICULTYDP4"] = diffs[5].ToString();
-
-                if (keysets[6] > 0) { result[key]["KEYSETSP0"] = ((char)keysets[6]).ToString(); result[key]["KEYSETSP1"] = ((char)keysets[6]).ToString(); }
-                if (keysets[0] > 0) { if (keysets[6] <= 0) result[key]["KEYSETSP1"] = ((char)keysets[0]).ToString(); result[key]["KEYSETSP2"] = ((char)keysets[0]).ToString(); }
-                if (keysets[1] > 0) result[key]["KEYSETSP3"] = ((char)keysets[1]).ToString();
-                if (keysets[2] > 0) result[key]["KEYSETSP4"] = ((char)keysets[2]).ToString();
-
-                if (keysets[7] > 0) { result[key]["KEYSETDP0"] = ((char)keysets[7]).ToString(); result[key]["KEYSETDP1"] = ((char)keysets[7]).ToString(); }
-                if (keysets[3] > 0) { if (keysets[7] <= 0) result[key]["KEYSETDP1"] = ((char)keysets[3]).ToString(); result[key]["KEYSETDP2"] = ((char)keysets[3]).ToString(); }
-                if (keysets[4] > 0) result[key]["KEYSETDP3"] = ((char)keysets[4]).ToString();
-                if (keysets[5] > 0) result[key]["KEYSETDP4"] = ((char)keysets[5]).ToString();
+                header.MetaCount = reader.ReadInt32();
+                header.EntryCount = reader.ReadInt32();
             }
-            return result;
+            else
+            {
+                header.MetaCount = reader.ReadInt16();
+                header.EntryCount = reader.ReadInt16();
+                SkipBytes(reader, 4); // header padding/reserved
+            }
+
+            return header;
+        }
+
+        private static void SkipEntryTable(BinaryReader reader, MusicDataHeader header)
+        {
+            int entrySize = header.Version >= 32 && header.Version < 80 ? 4 : 2;
+            SkipBytes(reader, header.EntryCount * entrySize);
+        }
+
+        private static Configuration ConvertMusicData(BinaryReader reader, Configuration result)
+        {
+            MusicDataHeader header = ReadHeader(reader);
+            if (header == null)
+            {
+                Console.WriteLine("Invalid file signature.");
+                return null;
+            }
+
+            SkipEntryTable(reader, header);
+
+            if (header.Version == 80)
+                return ConvertBelow27(reader, result, header.MetaCount, header.Version);
+
+            if (header.Version >= 32)
+                return ConvertV32(reader, result, header.MetaCount);
+
+            if (header.Version >= 27)
+                return ConvertBelow32(reader, result, header.MetaCount);
+
+            if (header.Version >= 20)
+                return ConvertBelow27(reader, result, header.MetaCount, header.Version);
+
+            return ConvertBelow20(reader, result, header.MetaCount);
         }
 
         static void Main(string[] args)
@@ -378,60 +537,17 @@ namespace IIDXDBGenerator
 
             string sourceFileName = args[0];
             Console.WriteLine("inputFile : " + sourceFileName);
+
             byte[] data = File.ReadAllBytes(sourceFileName);
             Configuration result = Configuration.ReadFile("BeatmaniaDB");
 
             using (MemoryStream mem = new MemoryStream(data))
             using (BinaryReader reader = new BinaryReader(mem))
-            {
-                if (reader.ReadInt32() != Constants.MagicIIDX)
-                {
-                    Console.WriteLine("Invalid file signature.");
-                    return;
-                }
+                result = ConvertMusicData(reader, result);
 
-                int musicDataVersion = reader.ReadInt32();
-                int metaCount, entryCount;
+            if (result == null)
+                return;
 
-                if (musicDataVersion >= 32)
-                {
-                    metaCount = reader.ReadInt32();
-                    entryCount = reader.ReadInt32();
-                }
-                else
-                {
-                    metaCount = reader.ReadInt16();
-                    entryCount = reader.ReadInt16();
-                    reader.ReadInt32(); // Skip padding/unknown
-                }
-
-                List<int> entries = new List<int>();
-                for (int i = 0; i < entryCount; i++)
-                {
-                    entries.Add((musicDataVersion >= 32 && musicDataVersion < 80) ? reader.ReadInt32() : reader.ReadInt16());
-                }
-
-                if (musicDataVersion == 80)
-                {
-                    result = ConvertBelow27(reader, result, metaCount, musicDataVersion);
-                }
-                else if (musicDataVersion >= 32)
-                {
-                    result = ConvertV32(reader, result, metaCount);
-                }
-                else if (musicDataVersion >= 27)
-                {
-                    result = ConvertBelow32(reader, result, metaCount);
-                }
-                else if (musicDataVersion >= 20)
-                {
-                    result = ConvertBelow27(reader, result, metaCount, musicDataVersion);
-                }
-                else
-                {
-                    result = ConvertBelow20(reader, result, metaCount);
-                }
-            }
             SetPlayVideoFlags(result, sourceFileName);
             result.WriteFile("BeatmaniaDB");
         }

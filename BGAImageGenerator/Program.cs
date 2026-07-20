@@ -19,6 +19,7 @@ namespace BGAImageGenerator
 
         private static int Main(string[] args)
         {
+            string temporaryFolder = null;
             try
             {
                 if (args.Length == 0 || args.Any(arg => arg == "--help" || arg == "-h"))
@@ -28,17 +29,31 @@ namespace BGAImageGenerator
                 }
 
                 Options options = ParseOptions(args);
-                string graphicFolder = ResolveGraphicFolder(options.GraphicRoot, options.GraphicId);
+                string sourcePath = Path.GetFullPath(options.GraphicRoot);
+                string graphicFolder;
+                string outputName;
+                if (IsIfsFile(sourcePath))
+                {
+                    temporaryFolder = Path.Combine(
+                        Path.GetTempPath(), "scharfrichter-bga-ifs-" + Guid.NewGuid().ToString("N"));
+                    graphicFolder = AfpGraphicArchiveExtractor.Extract(sourcePath, temporaryFolder);
+                    outputName = Path.GetFileNameWithoutExtension(sourcePath);
+                }
+                else
+                {
+                    graphicFolder = ResolveGraphicFolder(sourcePath, options.GraphicId);
+                    outputName = new DirectoryInfo(graphicFolder).Name;
+                }
                 IReadOnlyList<string> availableLayers = AfpBgaExporter.GetLayers(graphicFolder);
                 if (availableLayers.Count == 0)
                     throw new InvalidOperationException("No numbered AFP layers were found.");
 
                 IReadOnlyList<string> layers = ResolveLayers(options.Layers, availableLayers);
-                string outputFolder = ResolveOutputFolder(options.OutputFolder, graphicFolder);
+                string outputFolder = ResolveOutputFolder(options.OutputFolder, outputName);
                 Directory.CreateDirectory(outputFolder);
 
                 Console.WriteLine("BGA Image Generator");
-                Console.WriteLine("  graphic: " + graphicFolder);
+                Console.WriteLine("  source  : " + sourcePath);
                 Console.WriteLine("  format : " + options.Format.ToString().ToLowerInvariant());
                 Console.WriteLine("  layers : " + String.Join(", ", layers));
                 Console.WriteLine("  output : " + outputFolder);
@@ -59,8 +74,16 @@ namespace BGAImageGenerator
             }
             catch (Exception error)
             {
-                Console.Error.WriteLine("ERROR: " + error.Message);
+                Exception report = error is AggregateException aggregate
+                    ? aggregate.Flatten().InnerExceptions[0]
+                    : error;
+                Console.Error.WriteLine("ERROR: " + report.Message);
                 return 1;
+            }
+            finally
+            {
+                if (temporaryFolder != null && Directory.Exists(temporaryFolder))
+                    Directory.Delete(temporaryFolder, true);
             }
         }
 
@@ -146,6 +169,12 @@ namespace BGAImageGenerator
                 Directory.Exists(Path.Combine(folder, "tex"));
         }
 
+        private static bool IsIfsFile(string path)
+        {
+            return File.Exists(path) &&
+                String.Equals(Path.GetExtension(path), ".ifs", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static IReadOnlyList<string> ResolveLayers(
             IReadOnlyList<string> requested,
             IReadOnlyList<string> available)
@@ -166,20 +195,19 @@ namespace BGAImageGenerator
             return result;
         }
 
-        private static string ResolveOutputFolder(string requested, string graphicFolder)
+        private static string ResolveOutputFolder(string requested, string outputName)
         {
             if (!String.IsNullOrWhiteSpace(requested))
                 return Path.GetFullPath(requested);
 
-            string id = new DirectoryInfo(graphicFolder).Name;
-            return Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "BGAImageOutput", id));
+            return Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "BGAImageOutput", outputName));
         }
 
         private static void ShowUsage()
         {
             Console.WriteLine();
             Console.WriteLine("Usage:");
-            Console.WriteLine("  BGAImageGenerator <graphic root/folder> [options]");
+            Console.WriteLine("  BGAImageGenerator <graphic root/folder or IFS file> [options]");
             Console.WriteLine();
             Console.WriteLine("Options:");
             Console.WriteLine("  --id <id>             Graphic ID when a parent folder is specified");

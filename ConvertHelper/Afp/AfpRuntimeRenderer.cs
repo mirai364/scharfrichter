@@ -347,6 +347,8 @@ namespace ConvertHelper.Afp
             int maxX = Math.Min((int)Math.Max(Math.Max(p1.X, p2.X), Math.Max(p3.X, p4.X)) + 1, width);
             int minY = Math.Max((int)Math.Min(Math.Min(p1.Y, p2.Y), Math.Min(p3.Y, p4.Y)), 0);
             int maxY = Math.Min((int)Math.Max(Math.Max(p1.Y, p2.Y), Math.Max(p3.Y, p4.Y)) + 1, height);
+            bool identityColor = add.R == 0.0 && add.G == 0.0 && add.B == 0.0 && add.A == 0.0 &&
+                mult.R == 1.0 && mult.G == 1.0 && mult.B == 1.0 && mult.A == 1.0 && hsl.IsIdentity;
 
             for (int y = minY; y < maxY; y++)
             {
@@ -358,7 +360,9 @@ namespace ConvertHelper.Afp
                     if (sourceX < 0 || sourceY < 0 || sourceX >= texture.Width || sourceY >= texture.Height) continue;
                     int destinationOffset = x + y * width;
                     Rgba32 sourcePixel = texture.Pixels[sourceX + sourceY * texture.Width];
-                    canvas[destinationOffset] = Blend(canvas[destinationOffset], sourcePixel, add, mult, hsl, blend);
+                    canvas[destinationOffset] = identityColor
+                        ? BlendAdjusted(canvas[destinationOffset], sourcePixel, blend)
+                        : Blend(canvas[destinationOffset], sourcePixel, add, mult, hsl, blend);
                 }
             }
         }
@@ -371,8 +375,11 @@ namespace ConvertHelper.Afp
             double a = Clamp(source.A * mult.A + 255.0 * add.A);
             if (!hsl.IsIdentity)
                 ShiftHsl(ref r, ref g, ref b, hsl);
-            Rgba32 adjusted = new Rgba32((byte)r, (byte)g, (byte)b, (byte)a);
+            return BlendAdjusted(destination, new Rgba32((byte)r, (byte)g, (byte)b, (byte)a), mode);
+        }
 
+        private static Rgba32 BlendAdjusted(Rgba32 destination, Rgba32 adjusted, int mode)
+        {
             if (mode == 3)
             {
                 double alpha = adjusted.A / 255.0;

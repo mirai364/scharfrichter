@@ -350,6 +350,35 @@ namespace ConvertHelper.Afp
             bool identityColor = add.R == 0.0 && add.G == 0.0 && add.B == 0.0 && add.A == 0.0 &&
                 mult.R == 1.0 && mult.G == 1.0 && mult.B == 1.0 && mult.A == 1.0 && hsl.IsIdentity;
 
+            if (inverse.A12 == 0.0 && inverse.A21 == 0.0)
+            {
+                int[] sourceXs = new int[maxX - minX];
+                for (int x = minX; x < maxX; x++)
+                    sourceXs[x - minX] = (int)(inverse.A11 * (x + 0.5) + inverse.A41);
+
+                for (int y = minY; y < maxY; y++)
+                {
+                    int sourceY = (int)(inverse.A22 * (y + 0.5) + inverse.A42);
+                    if (sourceY < 0 || sourceY >= texture.Height)
+                        continue;
+
+                    int destinationOffset = minX + y * width;
+                    int sourceRow = sourceY * texture.Width;
+                    for (int x = minX; x < maxX; x++, destinationOffset++)
+                    {
+                        int sourceX = sourceXs[x - minX];
+                        if (sourceX < 0 || sourceX >= texture.Width)
+                            continue;
+
+                        Rgba32 sourcePixel = texture.Pixels[sourceX + sourceRow];
+                        canvas[destinationOffset] = identityColor
+                            ? BlendAdjusted(canvas[destinationOffset], sourcePixel, blend)
+                            : Blend(canvas[destinationOffset], sourcePixel, add, mult, hsl, blend);
+                    }
+                }
+                return;
+            }
+
             for (int y = minY; y < maxY; y++)
             {
                 for (int x = minX; x < maxX; x++)

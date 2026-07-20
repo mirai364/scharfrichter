@@ -118,9 +118,6 @@ namespace ConvertHelper
             ConversionContext context = CreateContext(unitNumerator, unitDenominator, idUseRenderAutoTip);
             ShowSplash(context);
 
-            if (TryProcessBgaImageTest(inArgs, context.Config))
-                return;
-
             string[] args = PrepareInputArguments(inArgs);
             if (args.Length == 0)
                 ShowUsage();
@@ -318,37 +315,6 @@ namespace ConvertHelper
             return args;
         }
 
-        /// <summary>
-        /// Handles standalone BGA image rendering for visual verification.
-        /// </summary>
-        private static bool TryProcessBgaImageTest(string[] args, Configuration config)
-        {
-            if (args.Length == 0 || !String.Equals(args[0], "--bga-image-test", StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            string graphicRoot = args.Length > 1 ? args[1] : config["BMS"].GetString("BgaImageGraphicFolder", "");
-            string graphicId = args.Length > 2 ? args[2] : "";
-            string afpName = args.Length > 3 ? args[3] : "";
-            string outputFolder = args.Length > 4 ? args[4] : "bga_image_test";
-            string graphicFolder = ResolveBgaImageGraphicFolder(graphicRoot, graphicId);
-            if (String.IsNullOrWhiteSpace(graphicFolder))
-                throw new ArgumentException("BGA image graphic folder is required.");
-            if (String.IsNullOrWhiteSpace(outputFolder))
-                throw new ArgumentException("BGA image output folder is required.");
-
-            Console.WriteLine("Rendering BGA image test:");
-            Console.WriteLine("  graphic: " + graphicFolder);
-            Console.WriteLine("  output : " + outputFolder);
-            AfpBgaFrameRenderer.RenderResult result =
-                AfpBgaFrameRenderer.RenderFrames(graphicFolder, afpName, outputFolder, "bga_image");
-            Console.WriteLine("  frames : " + result.FrameFiles.Count);
-            Console.WriteLine("  fps    : " + result.Fps);
-            Console.WriteLine("  webm   : " + result.WebmFile);
-            Console.WriteLine("  manifest: " + result.ManifestFile);
-            Console.WriteLine("BGA image test frames written: " + outputFolder);
-            return true;
-        }
-
         private static int ParsePositiveInt(string value, string name)
         {
             int result;
@@ -365,7 +331,6 @@ namespace ConvertHelper
         {
             Console.WriteLine();
             Console.WriteLine("Usage: BemaniToBMS <input file>");
-            Console.WriteLine("       BemaniToBMS --bga-image-test [graphic root/folder] [id] [afp name] [output folder]");
             Console.WriteLine();
             Console.WriteLine("Drag and drop with files and folders is fully supported for this application.");
             Console.WriteLine();
@@ -1164,7 +1129,7 @@ namespace ConvertHelper
                 AfpBgaFrameRenderer.RenderResult result = AfpBgaFrameRenderer.RenderFrames(graphicFolder, afpName, frameFolder, outputName);
                 List<int> bmpIds = RegisterBgaImageFrames(targetChart, dirPath, result.FrameFiles, options.BmsObjectBase);
                 AddBgaImageEvents(targetChart, bmpIds, result.Fps, channel);
-                Console.WriteLine("BGA image WebM written: " + result.WebmFile);
+                Console.WriteLine("BGA image frames written: " + frameFolder);
             }
             catch (Exception e)
             {
@@ -1816,4 +1781,3 @@ namespace ConvertHelper
         }
     }
 }
-

@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Threading.Tasks;
 using ConvertHelper.Afp;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
@@ -15,11 +13,29 @@ namespace ConvertHelper
 {
     internal static class AfpBgaFrameRenderer
     {
+        internal sealed class RenderSource
+        {
+            internal string AfpFolder = "";
+            internal Dictionary<string, AfpShape> Shapes = new Dictionary<string, AfpShape>(StringComparer.OrdinalIgnoreCase);
+            internal Dictionary<string, AfpTexture> Textures = new Dictionary<string, AfpTexture>(StringComparer.OrdinalIgnoreCase);
+            internal Dictionary<string, AfpMovie> Movies = new Dictionary<string, AfpMovie>(StringComparer.OrdinalIgnoreCase);
+            internal Dictionary<string, AfpMovie> MoviesByFile = new Dictionary<string, AfpMovie>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        internal sealed class RenderAnimation
+        {
+            public string AfpFile = "";
+            public string RenderPath = "";
+            public int Fps;
+            public int Width;
+            public int Height;
+            public IEnumerable<Rgba32[]> Frames = Array.Empty<Rgba32[]>();
+        }
+
         internal sealed class RenderResult
         {
             public List<string> FrameFiles = new List<string>();
             public int Fps;
-            public string WebmFile = "";
             public string ManifestFile = "";
         }
 
@@ -31,74 +47,103 @@ namespace ConvertHelper
             public int Fps { get; set; }
             public int FrameCount { get; set; }
             public List<string> Frames { get; set; } = new List<string>();
-            public string Webm { get; set; } = "";
         }
 
-        public static RenderResult RenderFrames(string graphicFolder, string afpName, string outputFolder, string outputPrefix)
+        internal static RenderSource LoadSource(string graphicFolder)
         {
             if (String.IsNullOrWhiteSpace(graphicFolder))
                 throw new ArgumentException("Graphic folder is required.", nameof(graphicFolder));
-            if (String.IsNullOrWhiteSpace(afpName))
-                throw new ArgumentException("AFP name is required.", nameof(afpName));
-            if (String.IsNullOrWhiteSpace(outputPrefix))
-                outputPrefix = "bga_image";
 
             graphicFolder = Path.GetFullPath(graphicFolder);
-            outputFolder = Path.GetFullPath(outputFolder);
-            Directory.CreateDirectory(outputFolder);
-
             string afpFolder = RequireDirectory(Path.Combine(graphicFolder, "afp"));
             string bsiFolder = RequireDirectory(Path.Combine(afpFolder, "bsi"));
             string geoFolder = RequireDirectory(Path.Combine(graphicFolder, "geo"));
             string textureFolder = RequireDirectory(Path.Combine(graphicFolder, "tex"));
-            string afpFileName = ResolveAfpName(afpFolder, afpName.Trim());
 
-            Dictionary<string, AfpShape> shapes = LoadShapes(geoFolder);
-            Dictionary<string, AfpTexture> textures = LoadTextures(textureFolder);
-            Dictionary<string, AfpMovie> movies = LoadMovies(afpFolder, bsiFolder, afpFileName, out AfpMovie targetMovie);
+            RenderSource source = new RenderSource
+            {
+                AfpFolder = afpFolder,
+                Shapes = LoadShapes(geoFolder),
+                Textures = LoadTextures(textureFolder),
+            };
+            LoadMovies(afpFolder, bsiFolder, source.Movies, source.MoviesByFile);
+            return source;
+        }
+
+        internal static RenderAnimation CreateAnimation(RenderSource source, string afpName)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+            if (String.IsNullOrWhiteSpace(afpName))
+                throw new ArgumentException("AFP name is required.", nameof(afpName));
+
+            string afpFileName = ResolveAfpName(source.AfpFolder, afpName.Trim());
+            if (!source.MoviesByFile.TryGetValue(afpFileName, out AfpMovie targetMovie))
+                throw new InvalidOperationException("AFP/BSI pair was not loaded: " + afpFileName);
+
             int fps = checked((int)Math.Round(targetMovie.Fps));
             if (fps <= 0)
                 throw new InvalidDataException("AFP contains an invalid frame rate: " + targetMovie.Fps);
 
+            AfpRuntimeRenderer renderer = new AfpRuntimeRenderer(source.Movies, source.Shapes, source.Textures);
+            return new RenderAnimation
+            {
+                AfpFile = afpFileName,
+                RenderPath = targetMovie.ExportedName,
+                Fps = fps,
+                Width = targetMovie.Width,
+                Height = targetMovie.Height,
+                Frames = renderer.Render(targetMovie),
+            };
+        }
+
+        public static RenderResult RenderFrames(string graphicFolder, string afpName, string outputFolder, string outputPrefix)
+        {
+            return RenderFrames(LoadSource(graphicFolder), afpName, outputFolder, outputPrefix);
+        }
+
+        internal static RenderResult RenderFrames(RenderSource source, string afpName, string outputFolder, string outputPrefix)
+        {
+            if (String.IsNullOrWhiteSpace(outputPrefix))
+                outputPrefix = "bga_image";
+
+            outputFolder = Path.GetFullPath(outputFolder);
+            Directory.CreateDirectory(outputFolder);
+            RenderAnimation animation = CreateAnimation(source, afpName);
+
             foreach (string oldFrame in Directory.EnumerateFiles(outputFolder, outputPrefix + "_????.png"))
                 File.Delete(oldFrame);
 
-            AfpRuntimeRenderer renderer = new AfpRuntimeRenderer(movies, shapes, textures);
             List<string> frameFiles = new List<string>();
             PngEncoder encoder = new PngEncoder { ColorType = PngColorType.RgbWithAlpha };
             int frameIndex = 0;
-            foreach (Rgba32[] pixels in renderer.Render(targetMovie))
+            foreach (Rgba32[] pixels in animation.Frames)
             {
                 string frameFile = Path.Combine(outputFolder, outputPrefix + "_" + frameIndex.ToString("0000", CultureInfo.InvariantCulture) + ".png");
-                using Image<Rgba32> image = Image.LoadPixelData(pixels, targetMovie.Width, targetMovie.Height);
+                using Image<Rgba32> image = Image.LoadPixelData(pixels, animation.Width, animation.Height);
                 image.Save(frameFile, encoder);
                 frameFiles.Add(Path.GetFullPath(frameFile));
                 frameIndex++;
             }
 
             if (frameFiles.Count == 0)
-                throw new InvalidOperationException("AFP path did not render any frames: " + targetMovie.ExportedName);
-
-            string webmFile = Path.GetFullPath(Path.Combine(outputFolder, outputPrefix + ".webm"));
-            CreateTransparentWebm(outputFolder, outputPrefix, targetMovie.Fps, webmFile);
+                throw new InvalidOperationException("AFP path did not render any frames: " + animation.RenderPath);
 
             RenderManifest manifest = new RenderManifest
             {
-                AfpFile = afpFileName,
-                RenderPath = targetMovie.ExportedName,
-                Fps = fps,
+                AfpFile = animation.AfpFile,
+                RenderPath = animation.RenderPath,
+                Fps = animation.Fps,
                 FrameCount = frameFiles.Count,
                 Frames = frameFiles,
-                Webm = webmFile,
             };
             string manifestFile = Path.GetFullPath(Path.Combine(outputFolder, outputPrefix + "_manifest.json"));
             File.WriteAllText(manifestFile, JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
 
             return new RenderResult
             {
-                Fps = fps,
+                Fps = animation.Fps,
                 FrameFiles = frameFiles,
-                WebmFile = webmFile,
                 ManifestFile = manifestFile,
             };
         }
@@ -129,26 +174,24 @@ namespace ConvertHelper
             return textures;
         }
 
-        private static Dictionary<string, AfpMovie> LoadMovies(
-            string afpFolder, string bsiFolder, string targetFileName, out AfpMovie targetMovie)
+        private static void LoadMovies(
+            string afpFolder,
+            string bsiFolder,
+            Dictionary<string, AfpMovie> movies,
+            Dictionary<string, AfpMovie> moviesByFile)
         {
-            Dictionary<string, AfpMovie> movies = new Dictionary<string, AfpMovie>(StringComparer.OrdinalIgnoreCase);
-            targetMovie = null;
             foreach (string sourceFile in Directory.EnumerateFiles(afpFolder).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
                 string fileName = Path.GetFileName(sourceFile);
                 string bsiFile = Path.Combine(bsiFolder, fileName);
-                if (!File.Exists(bsiFile)) continue;
+                if (!File.Exists(bsiFile))
+                    continue;
 
                 AfpMovie movie = AfpBinaryParser.ParseMovie(fileName, File.ReadAllBytes(sourceFile), File.ReadAllBytes(bsiFile));
                 movies[movie.ExportedName] = movie;
                 movies[fileName] = movie;
-                if (String.Equals(fileName, targetFileName, StringComparison.OrdinalIgnoreCase))
-                    targetMovie = movie;
+                moviesByFile[fileName] = movie;
             }
-            if (targetMovie == null)
-                throw new InvalidOperationException("AFP/BSI pair was not loaded: " + targetFileName);
-            return movies;
         }
 
         private static string ResolveAfpName(string folder, string requested)
@@ -159,7 +202,8 @@ namespace ConvertHelper
             foreach (string candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 string path = Path.Combine(folder, candidate);
-                if (File.Exists(path)) return Path.GetFileName(path);
+                if (File.Exists(path))
+                    return Path.GetFileName(path);
             }
             throw new FileNotFoundException("AFP file was not found: " + requested);
         }
@@ -169,55 +213,6 @@ namespace ConvertHelper
             if (!Directory.Exists(path))
                 throw new DirectoryNotFoundException("Required graphic directory was not found: " + path);
             return path;
-        }
-
-        private static void CreateTransparentWebm(string outputFolder, string prefix, double fps, string outputFile)
-        {
-            string input = Path.Combine(outputFolder, prefix + "_%04d.png");
-            string[] arguments =
-            {
-                "-hide_banner", "-loglevel", "error", "-y",
-                "-framerate", fps.ToString("G", CultureInfo.InvariantCulture),
-                "-i", input,
-                "-c:v", "libvpx-vp9", "-lossless", "1", "-pix_fmt", "yuva420p",
-                "-auto-alt-ref", "0", "-metadata:s:v:0", "alpha_mode=1", outputFile,
-            };
-            ProcessResult process = RunProcess("ffmpeg", arguments);
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException("ffmpeg failed to create transparent WebM: " + process.StandardError.Trim());
-        }
-
-        private sealed class ProcessResult
-        {
-            public int ExitCode;
-            public string StandardOutput = "";
-            public string StandardError = "";
-        }
-
-        private static ProcessResult RunProcess(string executable, string[] arguments)
-        {
-            ProcessStartInfo startInfo = new ProcessStartInfo(executable)
-            {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            foreach (string argument in arguments)
-                startInfo.ArgumentList.Add(argument);
-
-            using Process process = new Process { StartInfo = startInfo };
-            process.Start();
-            Task<string> standardOutput = process.StandardOutput.ReadToEndAsync();
-            Task<string> standardError = process.StandardError.ReadToEndAsync();
-            process.WaitForExit();
-            Task.WaitAll(standardOutput, standardError);
-            return new ProcessResult
-            {
-                ExitCode = process.ExitCode,
-                StandardOutput = standardOutput.Result,
-                StandardError = standardError.Result,
-            };
         }
     }
 }

@@ -197,6 +197,9 @@ namespace Scharfrichter.Codec
         /// </summary>
         public static string ConvertToBMSObjectString(int value, int places, int objectBase)
         {
+            if (objectBase == 62 && places == 2)
+                return ConvertToExtendedBMSObjectString(value);
+
             return ConvertToAlphabetString(value, places, GetBMSObjectAlphabet(objectBase));
         }
 
@@ -209,6 +212,32 @@ namespace Scharfrichter.Codec
                 return alphabetBMS62;
 
             return alphabetBME;
+        }
+
+        /// <summary>
+        /// Converts a two-character BMS object identifier while preserving legacy base-36 IDs first.
+        /// </summary>
+        private static string ConvertToExtendedBMSObjectString(int value)
+        {
+            int legacyLimit = (alphabetBME.Length * alphabetBME.Length) - 1;
+            if (value <= legacyLimit)
+                return ConvertToBMEString(value, 2);
+
+            int remaining = value - legacyLimit;
+            for (int high = 0; high < alphabetBMS62.Length; high++)
+            {
+                for (int low = 0; low < alphabetBMS62.Length; low++)
+                {
+                    if (high < alphabetBME.Length && low < alphabetBME.Length)
+                        continue;
+
+                    remaining--;
+                    if (remaining == 0)
+                        return alphabetBMS62.Substring(high, 1) + alphabetBMS62.Substring(low, 1);
+                }
+            }
+
+            return ConvertToAlphabetString(value, 2, alphabetBMS62);
         }
 
         public static string ConvertToDecimalString(int value, int places)

@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 
 namespace Scharfrichter.Codec.Charts
@@ -15,26 +16,72 @@ namespace Scharfrichter.Codec.Charts
 
         /// <summary>
         /// Reads a Pop'n Music PC chart stream into a chart model.
+        /// When version is 0, auto-detects the format by attempting
+        /// to parse with v24 and falling back to v1 if the stream
+        /// does not end exactly at the expected position.
         /// </summary>
         public static Chart Read(Stream source, int maxIndex, int version)
         {
+            if (version == 0)
+            {
+                // Try v24 first; if it doesn't consume all data, use v1
+                long savedPos = source.Position;
+                try
+                {
+                    Chart chartV24 = TryRead(source, maxIndex, 24);
+                    if (chartV24 != null)
+                        return chartV24;
+                }
+                catch
+                {
+                }
+                source.Position = savedPos;
+                version = 1;
+            }
+
+            return TryRead(source, maxIndex, version);
+        }
+
+        /// <summary>
+        /// Attempts to read the chart with the given version.
+        /// Returns null if the version doesn't match the data format
+        /// (stream position not matching the end).
+        /// </summary>
+        private static Chart TryRead(Stream source, int maxIndex, int version)
+        {
+            long savedPos = source.Position;
             Chart chart = new Chart();
             BinaryReader reader = new BinaryReader(source);
             Fraction[,] lastSample = new Fraction[9, 2];
 
-            while (TryReadEvent(reader, version, out PopnEvent popnEvent))
+            try
             {
-                Entry entry = CreateBaseEntry(popnEvent.Offset);
-                if (ApplyEventType(entry, popnEvent, lastSample, maxIndex))
-                    chart.Entries.Add(entry);
+                while (TryReadEvent(reader, version, out PopnEvent popnEvent))
+                {
+                    Entry entry = CreateBaseEntry(popnEvent.Offset);
+                    if (ApplyEventType(entry, popnEvent, lastSample, maxIndex))
+                        chart.Entries.Add(entry);
 
-                AddFreezeEndIfNeeded(chart, entry, popnEvent.ScoreLength);
-                if (entry.Type == EntryType.EndOfSong)
-                    break;
+                    AddFreezeEndIfNeeded(chart, entry, popnEvent.ScoreLength);
+                    if (entry.Type == EntryType.EndOfSong)
+                        break;
+                }
+
+                // Allow the stream to end after the end marker (trailing padding bytes are OK)
+                if (source.Position > source.Length)
+                {
+                    source.Position = savedPos;
+                    return null;
+                }
+
+                FinalizeChart(chart);
+                return chart;
             }
-
-            FinalizeChart(chart);
-            return chart;
+            catch
+            {
+                source.Position = savedPos;
+                return null;
+            }
         }
 
         /// <summary>

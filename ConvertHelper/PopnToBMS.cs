@@ -6,7 +6,9 @@ using Scharfrichter.Codec.Sounds.Encoders;
 using Scharfrichter.Common;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -18,6 +20,7 @@ namespace ConvertHelper
     static public class PopnToBMS
     {
         private const float DefaultSampleVolume = 0.6f;
+        private const int DefaultBmsObjectBase = 62;
         private static readonly ParallelOptions SampleEncodingParallelOptions = CreateSampleEncodingParallelOptions();
 
         /// <summary>
@@ -69,14 +72,16 @@ namespace ConvertHelper
             public bool EnableCommonBell;
             public string CommonBellPath;
             public string SoundOutputFormat;
+            public int BmsObjectBase;
+            public string OutputFormat;
         }
 
         /// <summary>
         /// Converts pop'n music files passed to the PopnToBMS command.
         /// </summary>
-        static public void Convert(string[] inArgs, long unitNumerator, long unitDenominator, int version)
+        static public void Convert(string[] inArgs, long unitNumerator, long unitDenominator)
         {
-            ConversionContext context = CreateContext(unitNumerator, unitDenominator, version);
+            ConversionContext context = CreateContext(unitNumerator, unitDenominator);
             Splash.Show("Popn to BeMusic Script");
 
             string[] args = PrepareInputArguments(inArgs);
@@ -109,13 +114,24 @@ namespace ConvertHelper
                 BMS bms = CreateBms(chart, options, filename);
                 bms.SoundExtension = SoundEncoderFactory.GetFileExtension(options.SoundOutputFormat);
                 string name = ResolveChartName(chart, filename);
-                string output = BuildChartOutputPath(config, filename, version, dirPath, ref name, options.Title);
+                string output = BuildChartOutputPath(config, filename, version, dirPath, ref name, options.Title, options.OutputFormat);
 
-                ConfigureSampleMap(bms, map);
-                QuantizeChartNotes(bms.Charts[0], options.QuantizeNotes);
+                if (IsBmsonOutput(options.OutputFormat))
+                {
+                    Bmson bmson = new Bmson();
+                    bmson.SoundExtension = SoundEncoderFactory.GetFileExtension(options.SoundOutputFormat);
+                    bmson.Charts = bms.Charts;
+                    if (!bmson.Write(mem, null))
+                        return false;
+                }
+                else
+                {
+                    ConfigureSampleMap(bms, map);
+                    QuantizeChartNotes(bms.Charts[0], options.QuantizeNotes);
 
-                if (!bms.Write(mem, true))
-                    return false;
+                    if (!bms.Write(mem, true))
+                        return false;
+                }
 
                 WritePmsFile(output, mem, updateTime);
             }
@@ -128,7 +144,7 @@ namespace ConvertHelper
         /// </summary>
         static public int ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "", string soundOutputFormat = SoundEncoderFactory.DefaultFormat)
         {
-            string name = GetSoundSetName(filename);
+            string name = GetSoundSetName(filename, nameInfo);
             string targetPath = Path.Combine(outputFolder, version, name);
             Common.SafeCreateDirectory(targetPath);
 
@@ -144,7 +160,7 @@ namespace ConvertHelper
         /// <summary>
         /// Creates the shared conversion context from command options and configuration files.
         /// </summary>
-        private static ConversionContext CreateContext(long unitNumerator, long unitDenominator, int version)
+        private static ConversionContext CreateContext(long unitNumerator, long unitDenominator)
         {
             Configuration config = Configuration.LoadIIDXConfig(Common.configFileName);
             return new ConversionContext
@@ -153,7 +169,7 @@ namespace ConvertHelper
                 Database = Common.LoadDB("PopnDB"),
                 UnitNumerator = unitNumerator,
                 UnitDenominator = unitDenominator,
-                Version = version,
+                Version = 1,
                 OutputFolder = config["BMS"]["Output"],
                 Category = "",
                 SoundOutputFormat = config["POPN"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat)
@@ -183,6 +199,7 @@ namespace ConvertHelper
             Console.WriteLine();
             Console.WriteLine("Supported formats:");
             Console.WriteLine("2DX");
+            Console.WriteLine("IFS");
         }
 
         /// <summary>
@@ -196,7 +213,17 @@ namespace ConvertHelper
                     continue;
 
                 Console.WriteLine("Processing File: " + args[i]);
-                if (Path.GetExtension(args[i]).ToUpper() != @".2DX")
+                string ext = Path.GetExtension(args[i]).ToUpper();
+                if (ext == @".IFS")
+                {
+                    ProcessIfsInput(args[i], context);
+                }
+                else if (ext == @".2DX")
+                {
+                    if (!Process2DXInput(args[i], context))
+                        return;
+                }
+                else
                 {
                     ShowUsage();
                     Console.WriteLine();
@@ -204,9 +231,153 @@ namespace ConvertHelper
                     Console.WriteLine();
                     continue;
                 }
+            }
+        }
 
-                if (!Process2DXInput(args[i], context))
+        /// <summary>
+        /// Reads an IFS archive and processes its .2DX and .BIN entries.
+        /// </summary>
+        private static void ProcessIfsInput(string filename, ConversionContext context)
+        {
+            string inputFolder = Path.GetDirectoryName(filename) + "\\";
+            DateTime archiveTime = File.GetLastWriteTime(filename);
+
+            using (FileStream source = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                BemaniIFS archive = BemaniIFS.Read(source);
+
+                // First pass: find the .2DX (main and preview) and .BIN entries
+                byte[] mainTwoDXData = null;
+                byte[] preTwoDXData = null;
+                string twoDXName = null;
+                Dictionary<string, byte[]> binEntries = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (BemaniIFS.Entry entry in archive.Entries)
+                {
+                    string ext = Path.GetExtension(entry.FullPath).ToUpper();
+                    string name = Path.GetFileNameWithoutExtension(entry.FullPath);
+                    if (ext == ".2DX")
+                    {
+                        bool isPreview = name.Length > 4 && name.Substring(name.Length - 4, 4) == "_pre";
+                        if (isPreview)
+                        {
+                            preTwoDXData = entry.Data;
+                        }
+                        else if (mainTwoDXData == null)
+                        {
+                            mainTwoDXData = entry.Data;
+                            twoDXName = name;
+                        }
+                    }
+                    else if (ext == ".BIN")
+                    {
+                        binEntries[name] = entry.Data;
+                    }
+                }
+
+                if (mainTwoDXData == null && preTwoDXData != null)
+                {
+                    // Only a preview 2DX exists; handle as a preview archive
+                    Console.WriteLine("Converting Preview");
+                    string baseName = twoDXName ?? Path.GetFileNameWithoutExtension(filename);
+                    // Strip _pre suffix to get base name
+                    if (baseName.Length > 4 && baseName.Substring(baseName.Length - 4, 4) == "_pre")
+                        baseName = baseName.Substring(0, baseName.Length - 4);
+                    string previewDbTitle = ResolveDatabaseTitle(baseName, context);
+                    using (MemoryStream preStream = new MemoryStream(preTwoDXData))
+                    {
+                        Bemani2DX preArchive = Bemani2DX.Read(preStream);
+                        ConvertSounds(preArchive.Sounds, baseName + "_pre.2dx", DefaultSampleVolume, archiveTime, null, context.OutputFolder, previewDbTitle, true, context.Category, context.SoundOutputFormat);
+                    }
                     return;
+                }
+
+                if (mainTwoDXData == null)
+                {
+                    Console.WriteLine("Warning: No .2DX file found in IFS archive.");
+                    return;
+                }
+
+                // Process the main .2DX as sound archive
+                Console.WriteLine("Converting Samples");
+                string title = twoDXName;
+                string databaseTitle = ResolveDatabaseTitle(title, context);
+                int maxIndex;
+                using (MemoryStream soundStream = new MemoryStream(mainTwoDXData))
+                {
+                    Bemani2DX soundArchive = Bemani2DX.Read(soundStream);
+                    maxIndex = ConvertSounds(soundArchive.Sounds, twoDXName, DefaultSampleVolume, archiveTime, null, context.OutputFolder, databaseTitle, false, context.Category, context.SoundOutputFormat);
+                }
+
+                // Process preview .2DX if present
+                if (preTwoDXData != null)
+                {
+                    Console.WriteLine("Converting Preview");
+                    using (MemoryStream preStream = new MemoryStream(preTwoDXData))
+                    {
+                        Bemani2DX preArchive = Bemani2DX.Read(preStream);
+                        ConvertSounds(preArchive.Sounds, twoDXName + "_pre.2dx", DefaultSampleVolume, archiveTime, null, context.OutputFolder, databaseTitle, true, context.Category, context.SoundOutputFormat);
+                    }
+                }
+
+                // Process each .BIN entry
+                foreach (var kv in binEntries)
+                {
+                    string binTitle = kv.Key;
+                    byte[] binData = kv.Value;
+
+                    // Determine the difficulty suffix from the bin entry name
+                    ChartInput chartInput = ResolveChartInputFromBinName(twoDXName, binTitle);
+                    if (chartInput == null)
+                        continue;
+
+                    Console.WriteLine("Processing IFS Entry: " + binTitle + ".bin");
+                    using (MemoryStream chartStream = new MemoryStream(binData))
+                    {
+                        // Use twoDXName (base name) for DB lookups and output path, not binTitle
+                        ResolveCategoryAndVersion(twoDXName, context);
+                        Popn popnArchive = Popn.Read(chartStream, context.UnitNumerator, context.UnitDenominator, maxIndex, context.Version);
+                        if (!ApplyDatabaseMetadata(popnArchive.Charts[0], twoDXName, chartInput.DifficultyIndex, context))
+                            continue;
+
+                        ConvertChart(popnArchive.Charts[0], context.Config, twoDXName, chartInput.DifficultyIndex, null, archiveTime, context.Category, context.OutputFolder);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Maps a .BIN entry name (e.g. "pops_ep", "pops_np") to a difficulty slot.
+        /// Returns null if the suffix is not recognized.
+        /// </summary>
+        private static ChartInput ResolveChartInputFromBinName(string baseName, string binTitle)
+        {
+            // The binTitle may include the baseName prefix; extract the suffix
+            string suffix = "";
+            if (binTitle.Length > baseName.Length && binTitle.StartsWith(baseName, StringComparison.OrdinalIgnoreCase))
+                suffix = binTitle.Substring(baseName.Length);
+            else
+                suffix = binTitle;
+
+            switch (suffix.ToUpper())
+            {
+                case "_EP":
+                case "EP":
+                    return new ChartInput { Filename = binTitle + ".bin", DifficultyIndex = 3 };
+                case "_NP":
+                case "NP":
+                    return new ChartInput { Filename = binTitle + ".bin", DifficultyIndex = 1 };
+                case "_HP":
+                case "HP":
+                    return new ChartInput { Filename = binTitle + ".bin", DifficultyIndex = 0 };
+                case "_OP":
+                case "OP":
+                    return new ChartInput { Filename = binTitle + ".bin", DifficultyIndex = 2 };
+                case "_BP":
+                case "BP":
+                    return new ChartInput { Filename = binTitle + ".bin", DifficultyIndex = 4 };
+                default:
+                    return null;
             }
         }
 
@@ -350,10 +521,39 @@ namespace ConvertHelper
         }
 
         /// <summary>
+        /// Resolves the category string from the database and updates the context version from it.
+        /// When the song is not in the database, version 0 is used to trigger auto-detection.
+        /// </summary>
+        private static void ResolveCategoryAndVersion(string title, ConversionContext context)
+        {
+            if (context.Database[title]["TITLE"] == "")
+            {
+                context.Category = "01";
+                context.Version = 0; // auto-detect
+                return;
+            }
+
+            string rawCategory = context.Database[title]["CATEGORY"];
+            int categoryValue;
+            if (Int32.TryParse(rawCategory, out categoryValue) && categoryValue > 0)
+            {
+                context.Version = categoryValue;
+            }
+            else
+            {
+                context.Version = 1;
+            }
+            context.Category = String.Format("{0:00}", categoryValue > 0 ? categoryValue : 1);
+        }
+
+        /// <summary>
         /// Converts one pop'n BIN chart file to PMS.
         /// </summary>
         private static void ConvertPopnChartFile(ChartInput chartInput, SongInput songInput, int maxIndex, ConversionContext context)
         {
+            // Resolve version from category before reading the chart
+            ResolveCategoryAndVersion(songInput.Title, context);
+
             using (MemoryStream source = new MemoryStream(File.ReadAllBytes(chartInput.Filename)))
             {
                 Popn archive = Popn.Read(source, context.UnitNumerator, context.UnitDenominator, maxIndex, context.Version);
@@ -375,10 +575,9 @@ namespace ConvertHelper
             chart.Tags["TITLE"] = context.Database[title]["TITLE"];
             chart.Tags["ARTIST"] = context.Database[title]["ARTIST"];
             chart.Tags["GENRE"] = context.Database[title]["GENRE"];
-            context.Category = String.Format("{0:00}", context.Database[title]["CATEGORY"]);
 
             string playerLevel = context.Database[title]["DIFFICULTYDP" + context.Config["IIDX"]["DIFFICULTY" + difficultyIndex.ToString()]];
-            if (Int32.Parse(playerLevel) <= 0)
+            if (playerLevel == "" || Int32.Parse(playerLevel) <= 0)
                 return false;
 
             chart.Tags["PLAYLEVEL"] = playerLevel;
@@ -386,14 +585,14 @@ namespace ConvertHelper
         }
 
         /// <summary>
-        /// Resolves the display title from the pop'n database and updates the category state.
+        /// Resolves the display title from the pop'n database and updates the category and version state.
         /// </summary>
         private static string ResolveDatabaseTitle(string title, ConversionContext context)
         {
             if (context.Database[title]["TITLE"] == "")
                 return title;
 
-            context.Category = String.Format("{0:00}", context.Database[title]["CATEGORY"]);
+            ResolveCategoryAndVersion(title, context);
             return context.Database[title]["TITLE"];
         }
 
@@ -426,8 +625,30 @@ namespace ConvertHelper
                 OutputRank = config["POPN"].GetValue("OutputRank"),
                 EnableCommonBell = config["POPN"].GetBool("EnableCommonBell"),
                 CommonBellPath = config["POPN"].GetString("CommonBellPath"),
-                SoundOutputFormat = config["POPN"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat)
+                SoundOutputFormat = config["POPN"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat),
+                BmsObjectBase = GetBmsObjectBase(config),
+                OutputFormat = config["BMS"].GetString("OutputFormat", "bms"),
             };
+        }
+
+        /// <summary>
+        /// Returns the BMS object identifier base from configuration.
+        /// </summary>
+        private static int GetBmsObjectBase(Configuration config)
+        {
+            if (config == null)
+                return DefaultBmsObjectBase;
+
+            int configuredBase = config["BMS"].GetValue("BmsObjectBase", DefaultBmsObjectBase);
+            return configuredBase == 36 ? 36 : 62;
+        }
+
+        /// <summary>
+        /// Returns true when the configured chart output format is bmson.
+        /// </summary>
+        private static bool IsBmsonOutput(string outputFormat)
+        {
+            return String.Equals(outputFormat, "bmson", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -445,6 +666,7 @@ namespace ConvertHelper
         private static BMS CreateBms(Chart chart, ChartOptions options, string filename)
         {
             BMS bms = new BMS();
+            bms.BmsObjectBase = options.BmsObjectBase;
             bms.Charts = new Chart[] { chart };
 
             string name = ResolveChartName(chart, filename);
@@ -482,10 +704,12 @@ namespace ConvertHelper
 
         /// <summary>
         /// Builds the final PMS output path and creates its directory.
+        /// Uses the chart's display name (TITLE tag) as the output folder name.
         /// </summary>
-        private static string BuildChartOutputPath(Configuration config, string filename, string version, string dirPath, ref string name, string title)
+        private static string BuildChartOutputPath(Configuration config, string filename, string version, string dirPath, ref string name, string title, string outputFormat)
         {
-            string dirName = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
+            // Use the display name (DB TITLE) for the folder name instead of the filename stem
+            string dirName = Common.nameReplace(name);
             dirPath = Path.Combine(dirPath, version, dirName);
 
             if (title != null && title.Length > 0)
@@ -493,7 +717,9 @@ namespace ConvertHelper
 
             name = Common.nameReplace(name);
             Common.SafeCreateDirectory(dirPath);
-            return Path.Combine(dirPath, @"@" + name + ".pms");
+
+            string extension = IsBmsonOutput(outputFormat) ? ".bmson" : ".pms";
+            return Path.Combine(dirPath, @"@" + name + extension);
         }
 
         /// <summary>
@@ -537,13 +763,21 @@ namespace ConvertHelper
 
         /// <summary>
         /// Resolves the folder name used for converted sound output.
+        /// Uses the database title (nameInfo) when available, otherwise falls back to the filename stem.
         /// </summary>
-        private static string GetSoundSetName(string filename)
+        private static string GetSoundSetName(string filename, string nameInfo = "")
         {
-            string name = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
-            if (name.IndexOf("_pre") >= 0)
-                name = name.Substring(0, name.Length - 4);
-
+            string name;
+            if (!string.IsNullOrEmpty(nameInfo))
+            {
+                name = nameInfo;
+            }
+            else
+            {
+                name = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
+                if (name.IndexOf("_pre") >= 0)
+                    name = name.Substring(0, name.Length - 4);
+            }
             return name;
         }
 

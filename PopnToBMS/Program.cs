@@ -7,8 +7,7 @@
             ConvertHelper.PopnToBMS.Convert(
                 args,
                 ConvertHelper.ConverterTiming.StandardNumerator,
-                ConvertHelper.ConverterTiming.StandardDenominator,
-                1);
+                ConvertHelper.ConverterTiming.StandardDenominator);
         }
     }
 }

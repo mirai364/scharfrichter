@@ -25,6 +25,7 @@ namespace Scharfrichter.Codec.Archives
         private int[] sampleMap;
         private Dictionary<int, int> reSampleMap = new Dictionary<int, int>();
         private string soundExtension = "ogg";
+        private string soundFolder = "sounds";
         private int bmsObjectBase = DefaultBmsObjectBase;
 
         /// <summary>
@@ -71,6 +72,22 @@ namespace Scharfrichter.Codec.Archives
             set
             {
                 soundExtension = String.IsNullOrWhiteSpace(value) ? "ogg" : value.Trim().TrimStart('.').ToLowerInvariant();
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the folder prefix used for #WAV sample paths.
+        /// Defaults to "sounds" for IIDX compatibility. Pop'n sets this to the filename stem.
+        /// </summary>
+        public string SoundFolder
+        {
+            get
+            {
+                return soundFolder;
+            }
+            set
+            {
+                soundFolder = String.IsNullOrWhiteSpace(value) ? "sounds" : value.TrimEnd('\\', '/');
             }
         }
 
@@ -146,11 +163,11 @@ namespace Scharfrichter.Codec.Archives
             string targetFolder;
             if (keyset == "0")
             {
-                targetFolder = "sounds\\";
+                targetFolder = soundFolder + "\\";
             }
             else
             {
-                targetFolder = "sounds_" + keyset + "\\";
+                targetFolder = soundFolder + "_" + keyset + "\\";
             }
 
             foreach (KeyValuePair<int, int> pair in reSampleMap)

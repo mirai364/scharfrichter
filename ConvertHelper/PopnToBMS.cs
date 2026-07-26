@@ -115,6 +115,7 @@ namespace ConvertHelper
             {
                 BMS bms = CreateBms(chart, options, filename);
                 bms.SoundExtension = SoundEncoderFactory.GetFileExtension(options.SoundOutputFormat);
+                bms.SoundFolder = GetSoundSetName(filename);
                 string name = ResolveChartName(chart, filename);
                 string output = BuildChartOutputPath(config, filename, version, dirPath, ref name, options.Title, options.OutputFormat);
 
@@ -148,7 +149,28 @@ namespace ConvertHelper
         static public int ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "", string soundOutputFormat = SoundEncoderFactory.DefaultFormat, string outputFormat = "bms")
         {
             string name = GetSoundSetName(filename, nameInfo);
-            string targetPath = Path.Combine(outputFolder, version, name);
+            // Build output path: version\[DB_TITLE]\[ファイル名]
+            // For previews, the filename subdirectory is omitted
+            // e.g. "unknown\pops\pops" (not in DB, regular sounds)
+            // e.g. "unknown\pops" (not in DB, preview)
+            string targetPath;
+            if (!string.IsNullOrEmpty(nameInfo))
+            {
+                string safeTitle = Common.nameReplace(nameInfo);
+                if (!string.IsNullOrEmpty(version))
+                    targetPath = Path.Combine(outputFolder, version, safeTitle);
+                else
+                    targetPath = Path.Combine(outputFolder, safeTitle);
+                if (!isPre2DX)
+                    targetPath = Path.Combine(targetPath, name);
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(version))
+                    targetPath = Path.Combine(outputFolder, version, name);
+                else
+                    targetPath = Path.Combine(outputFolder, name);
+            }
             Common.SafeCreateDirectory(targetPath);
 
             if (isPre2DX)
@@ -590,13 +612,13 @@ namespace ConvertHelper
 
         /// <summary>
         /// Resolves the category string from the database and updates the context version from it.
-        /// When the song is not in the database, version 0 is used to trigger auto-detection.
+        /// When the song is not in the database, the category is set to "unknown" and version to 0.
         /// </summary>
         private static void ResolveCategoryAndVersion(string title, ConversionContext context)
         {
             if (context.Database[title]["TITLE"] == "")
             {
-                context.Category = "01";
+                context.Category = "unknown";
                 context.Version = 0; // auto-detect
                 return;
             }
@@ -634,11 +656,17 @@ namespace ConvertHelper
 
         /// <summary>
         /// Applies database metadata to one chart and returns false when the difficulty is disabled.
+        /// When FILEEASY/FILENORMAL/FILEHYPER/FILEEX entries exist in the database,
+        /// only charts whose source filename matches the FILE* value are output.
         /// </summary>
         private static bool ApplyDatabaseMetadata(Chart chart, string title, int difficultyIndex, ConversionContext context)
         {
             if (context.Database[title]["TITLE"] == "")
                 return true;
+
+            // Check FILE* filtering: if the DB has FILE* entries, only output matching difficulties
+            if (!FilterByFileEntry(title, difficultyIndex, context))
+                return false;
 
             chart.Tags["TITLE"] = context.Database[title]["TITLE"];
             chart.Tags["ARTIST"] = context.Database[title]["ARTIST"];
@@ -653,14 +681,73 @@ namespace ConvertHelper
         }
 
         /// <summary>
+        /// Maps a difficulty index (0-4) to the corresponding FILE* key name in PopnDB.
+        /// Returns null for battle (index 4) or unrecognized indices.
+        /// </summary>
+        private static string GetFileKeyForDifficulty(ConversionContext context, int difficultyIndex)
+        {
+            // difficultyIndex -> difficulty value -> POPN difficulty name -> FILE* key
+            string diffNum = context.Config["IIDX"]["DIFFICULTY" + difficultyIndex.ToString()];
+            if (string.IsNullOrEmpty(diffNum))
+                return null;
+
+            string difficultyName = context.Config["POPN"]["Difficulty" + diffNum];
+            if (string.IsNullOrEmpty(difficultyName))
+                return null;
+
+            // FILEEASY, FILENORMAL, FILEHYPER, FILEEX
+            return "FILE" + difficultyName.ToUpper();
+        }
+
+        /// <summary>
+        /// When the PopnDB entry for a song contains FILE* entries, only charts whose
+        /// filename matches the FILE* value's last path component are allowed.
+        /// If no FILE* entries exist in the DB, all difficulties pass (return true).
+        /// </summary>
+        private static bool FilterByFileEntry(string title, int difficultyIndex, ConversionContext context)
+        {
+            // Check if any FILE* entry exists for this song
+            bool hasAnyFileEntry = false;
+            string[] fileKeys = { "FILEEASY", "FILENORMAL", "FILEHYPER", "FILEEX" };
+            foreach (string key in fileKeys)
+            {
+                if (context.Database[title][key] != "")
+                {
+                    hasAnyFileEntry = true;
+                    break;
+                }
+            }
+
+            // If no FILE* entries exist at all, allow all difficulties
+            if (!hasAnyFileEntry)
+                return true;
+
+            // Get the FILE* key for this difficulty
+            string fileKey = GetFileKeyForDifficulty(context, difficultyIndex);
+            if (fileKey == null)
+                return true; // BATTLE or unknown difficulty - allow by default
+
+            string fileValue = context.Database[title][fileKey];
+            if (fileValue == "")
+                return false; // This difficulty has an empty FILE* entry -> skip
+
+            // Extract the filename portion (last path component) from the FILE* value
+            // e.g. "popn1/pops" -> "pops"
+            string expectedFilename = Path.GetFileName(fileValue);
+
+            // Compare case-insensitively against the source title (filename without extension)
+            return String.Equals(expectedFilename, title, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
         /// Resolves the display title from the pop'n database and updates the category and version state.
         /// </summary>
         private static string ResolveDatabaseTitle(string title, ConversionContext context)
         {
+            ResolveCategoryAndVersion(title, context);
             if (context.Database[title]["TITLE"] == "")
                 return title;
 
-            ResolveCategoryAndVersion(title, context);
             return context.Database[title]["TITLE"];
         }
 
@@ -831,21 +918,15 @@ namespace ConvertHelper
 
         /// <summary>
         /// Resolves the folder name used for converted sound output.
-        /// Uses the database title (nameInfo) when available, otherwise falls back to the filename stem.
+        /// For pop'n music, the sound folder is always named after the source filename
+        /// (e.g. pops.ifs -> "pops", pops_2nd.ifs -> "pops_2nd") rather than the database title.
+        /// Strips the "_pre" suffix for preview archives.
         /// </summary>
         private static string GetSoundSetName(string filename, string nameInfo = "")
         {
-            string name;
-            if (!string.IsNullOrEmpty(nameInfo))
-            {
-                name = nameInfo;
-            }
-            else
-            {
-                name = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
-                if (name.IndexOf("_pre") >= 0)
-                    name = name.Substring(0, name.Length - 4);
-            }
+            string name = Path.GetFileNameWithoutExtension(Path.GetFileName(filename));
+            if (name.IndexOf("_pre") >= 0)
+                name = name.Substring(0, name.Length - 4);
             return name;
         }
 
@@ -928,6 +1009,8 @@ namespace ConvertHelper
 
         /// <summary>
         /// Creates and returns the output directory for numbered sample files.
+        /// For pop'n music, numbered sample files (0001.ogg etc.) are placed directly
+        /// in the target path without a "sounds" subdirectory.
         /// </summary>
         private static string BuildSampleTargetPath(string targetPath, string index, string outputFormat = "bms")
         {
@@ -935,13 +1018,9 @@ namespace ConvertHelper
             {
                 targetPath = Path.Combine(targetPath, Bmson.GetSoundFolder(index));
             }
-            else
-            {
-                targetPath += "\\sounds";
-                if (index != null)
-                    targetPath += "_" + index;
-            }
 
+            // For pop'n BMS output, place samples directly in targetPath (no \sounds subdirectory).
+            // The targetPath already points to the filename-based folder (e.g. pops/).
             Common.SafeCreateDirectory(targetPath);
             return targetPath;
         }

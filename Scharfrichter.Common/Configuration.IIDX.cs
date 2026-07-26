@@ -14,17 +14,6 @@ namespace Scharfrichter.Common
             config["BMS"].SetDefaultString("Players1", "1P");
             config["BMS"].SetDefaultString("Players2", "2P");
             config["BMS"].SetDefaultString("Players3", "DP");
-            config["BMS"].SetDefaultString("MovieFolder", "");
-            config["BMS"].SetDefaultString("Output", "");
-            config["BMS"].SetDefaultString("OutputFormat", "bms");
-            config["BMS"].SetDefaultValue("BmsObjectBase", 62);
-            config["BMS"].SetDefaultBool("OptimizeBmsonSounds", false);
-            config["BMS"].SetDefaultBool("UseBgaImage", false);
-            config["BMS"].SetDefaultString("BgaImageGraphicFolder", "");
-            config["BMS"].SetDefaultString("BgaImageOutputName", "bga_image");
-            config["BMS"].SetDefaultBool("IsSameFolderMovie", false);
-            config["BMS"].SetDefaultBool("IsUseRenderAutoTip", false);
-            config["BMS"].SetDefaultBool("ForceRenderAutoTip", false);
             config["IIDX"].SetDefaultString("Difficulty0", "3");
             config["IIDX"].SetDefaultString("Difficulty1", "2");
             config["IIDX"].SetDefaultString("Difficulty2", "4");
@@ -42,7 +31,27 @@ namespace Scharfrichter.Common
             config["IIDX"].SetDefaultString("Players8", "3");
             config["IIDX"].SetDefaultString("Players9", "3");
             config["IIDX"].SetDefaultString("SoundOutputFormat", "ogg");
+            config["IIDX"].SetDefaultString("MovieFolder", "");
+            config["IIDX"].SetDefaultString("Output", "");
+            config["IIDX"].SetDefaultString("OutputFormat", "bms");
+            config["IIDX"].SetDefaultValue("OutputRank", 3);
+            config["IIDX"].SetDefaultValue("BmsObjectBase", 62);
+            config["IIDX"].SetDefaultBool("OptimizeBmsonSounds", false);
+            config["IIDX"].SetDefaultBool("UseBgaImage", false);
+            config["IIDX"].SetDefaultString("BgaImageGraphicFolder", "");
+            config["IIDX"].SetDefaultString("BgaImageOutputName", "bga_image");
+            config["IIDX"].SetDefaultBool("IsSameFolderMovie", false);
+            config["IIDX"].SetDefaultBool("IsUseRenderAutoTip", false);
+            config["IIDX"].SetDefaultBool("ForceRenderAutoTip", false);
+            config["IIDX"].SetDefaultBool("UseMovie", true);
             config["POPN"].SetDefaultString("SoundOutputFormat", "ogg");
+            config["POPN"].SetDefaultString("Output", "");
+            config["POPN"].SetDefaultString("OutputFormat", "bms");
+            config["POPN"].SetDefaultValue("OutputRank", 3);
+            config["POPN"].SetDefaultValue("BmsObjectBase", 62);
+            config["POPN"].SetDefaultBool("OptimizeBmsonSounds", false);
+            config["POPN"].SetDefaultBool("EnableCommonBell", false);
+            config["POPN"].SetDefaultString("CommonBellPath", @"..\..\0000.wav");
             return config;
         }
 

@@ -421,7 +421,7 @@ namespace ConvertHelper
                         ConvertSD9Sound(source, input, context.SoundOutputFormat);
                         break;
                     case @".SSP":
-                        ConvertSounds(BemaniSSP.Read(source).Sounds, filename, FullSampleVolume, input.UpdateTime, null, "", "", false, "", context.Config["BMS"].GetString("OutputFormat", "bms"), context.SoundOutputFormat);
+                        ConvertSounds(BemaniSSP.Read(source).Sounds, filename, FullSampleVolume, input.UpdateTime, null, "", "", false, "", context.Config["IIDX"].GetString("OutputFormat", "bms"), context.SoundOutputFormat);
                         break;
                 }
             }
@@ -587,7 +587,7 @@ namespace ConvertHelper
         private static void EnsureOutputFolder(string filename, ConversionContext context)
         {
             if (context.OutputFolder == null)
-                context.OutputFolder = context.Config["BMS"]["Output"];
+                context.OutputFolder = context.Config["IIDX"]["Output"];
 
             if (context.OutputFolder == "")
                 context.OutputFolder = Path.GetDirectoryName(filename) + "\\";
@@ -849,7 +849,7 @@ namespace ConvertHelper
             if (TryConvertPackedBmsonSounds(sounds, input, context, volume, title))
                 return;
 
-            ConvertSounds(sounds, input.Filename, volume, input.UpdateTime, input.Index, context.OutputFolder, title, input.IsPre2DX, input.Version, context.Config["BMS"].GetString("OutputFormat", "bms"), context.SoundOutputFormat);
+            ConvertSounds(sounds, input.Filename, volume, input.UpdateTime, input.Index, context.OutputFolder, title, input.IsPre2DX, input.Version, context.Config["IIDX"].GetString("OutputFormat", "bms"), context.SoundOutputFormat);
         }
 
         /// <summary>
@@ -923,15 +923,15 @@ namespace ConvertHelper
                 QuantizeMeasure = config["BMS"].GetValue("QuantizeMeasure"),
                 Difficulty = difficulty,
                 Title = title.Trim(),
-                MovieFolder = config["BMS"]["MovieFolder"],
-                IsSameFolderMovie = config["BMS"].GetBool("IsSameFolderMovie"),
-                UseMovie = config["BMS"].GetBool("UseMovie"),
-                OutputRank = config["BMS"].GetValue("OutputRank"),
-                OutputFormat = config["BMS"].GetString("OutputFormat", "bms"),
+                MovieFolder = config["IIDX"]["MovieFolder"],
+                IsSameFolderMovie = config["IIDX"].GetBool("IsSameFolderMovie"),
+                UseMovie = config["IIDX"].GetBool("UseMovie"),
+                OutputRank = config["IIDX"].GetValue("OutputRank"),
+                OutputFormat = config["IIDX"].GetString("OutputFormat", "bms"),
                 SoundOutputFormat = config["IIDX"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat),
-                UseBgaImage = config["BMS"].GetBool("UseBgaImage"),
-                BgaImageGraphicFolder = config["BMS"].GetString("BgaImageGraphicFolder", ""),
-                BgaImageOutputName = config["BMS"].GetString("BgaImageOutputName", "bga_image"),
+                UseBgaImage = config["IIDX"].GetBool("UseBgaImage"),
+                BgaImageGraphicFolder = config["IIDX"].GetString("BgaImageGraphicFolder", ""),
+                BgaImageOutputName = config["IIDX"].GetString("BgaImageOutputName", "bga_image"),
                 BmsObjectBase = GetBmsObjectBase(config),
             };
         }
@@ -944,7 +944,7 @@ namespace ConvertHelper
             if (config == null)
                 return DefaultBmsObjectBase;
 
-            int configuredBase = config["BMS"].GetValue("BmsObjectBase", DefaultBmsObjectBase);
+            int configuredBase = config["IIDX"].GetValue("BmsObjectBase", DefaultBmsObjectBase);
             return configuredBase == 36 ? 36 : 62;
         }
 
@@ -1019,7 +1019,7 @@ namespace ConvertHelper
         private static string BuildChartDirectory(Configuration config, string version, string name)
         {
             string safeName = Common.nameReplace(name);
-            string dirPath = Path.Combine(config["BMS"]["Output"], version, safeName);
+            string dirPath = Path.Combine(config["IIDX"]["Output"], version, safeName);
             Common.SafeCreateDirectory(dirPath);
             return dirPath;
         }
@@ -1054,7 +1054,7 @@ namespace ConvertHelper
             if (config == null)
                 return false;
 
-            return IsBmsonOutput(config["BMS"].GetString("OutputFormat", "bms"));
+            return IsBmsonOutput(config["IIDX"].GetString("OutputFormat", "bms"));
         }
 
         /// <summary>
@@ -1345,7 +1345,7 @@ namespace ConvertHelper
 
         private static bool TryConvertPackedBmsonSounds(Sound[] sounds, InputFileInfo input, ConversionContext context, float volume, string nameInfo)
         {
-            if (!IsBmsonOutput(context.Config) || !context.Config["BMS"].GetBool("OptimizeBmsonSounds") || input.IsPre2DX || PendingBmsonCharts.Count == 0)
+            if (!IsBmsonOutput(context.Config) || !context.Config["IIDX"].GetBool("OptimizeBmsonSounds") || input.IsPre2DX || PendingBmsonCharts.Count == 0)
                 return false;
 
             string name = GetSoundSetName(input.Filename, nameInfo);

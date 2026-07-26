@@ -81,6 +81,7 @@ namespace ConvertHelper
         /// </summary>
         static public void Convert(string[] inArgs, long unitNumerator, long unitDenominator)
         {
+            PopnToBMS_PackBmson.Clear();
             ConversionContext context = CreateContext(unitNumerator, unitDenominator);
             Splash.Show("Popn to BeMusic Script");
 
@@ -97,8 +98,9 @@ namespace ConvertHelper
 
         /// <summary>
         /// Writes one pop'n chart as a PMS file with metadata and quantization settings applied.
+        /// Supports bmson output when OutputFormat is set to "bmson" in config.
         /// </summary>
-        static public bool ConvertChart(Chart chart, Configuration config, string filename, int index, int[] map, DateTime updateTime, string version = "", string dirPath = "")
+        static public bool ConvertChart(Chart chart, Configuration config, string filename, int index, int[] map, DateTime updateTime, string version = "", string dirPath = "", BmsonSoundLayout bmsonLayout = null)
         {
             if (config == null)
                 config = Configuration.LoadIIDXConfig(Common.configFileName);
@@ -121,7 +123,7 @@ namespace ConvertHelper
                     Bmson bmson = new Bmson();
                     bmson.SoundExtension = SoundEncoderFactory.GetFileExtension(options.SoundOutputFormat);
                     bmson.Charts = bms.Charts;
-                    if (!bmson.Write(mem, null))
+                    if (!bmson.Write(mem, bmsonLayout))
                         return false;
                 }
                 else
@@ -141,8 +143,9 @@ namespace ConvertHelper
 
         /// <summary>
         /// Encodes pop'n samples as OGG files and returns the longest sample index.
+        /// Supports bmson output format for proper folder structure.
         /// </summary>
-        static public int ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "", string soundOutputFormat = SoundEncoderFactory.DefaultFormat)
+        static public int ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "", string soundOutputFormat = SoundEncoderFactory.DefaultFormat, string outputFormat = "bms")
         {
             string name = GetSoundSetName(filename, nameInfo);
             string targetPath = Path.Combine(outputFolder, version, name);
@@ -154,7 +157,7 @@ namespace ConvertHelper
                 return -1;
             }
 
-            return ConvertSampleSounds(sounds, targetPath, INDEX, volume, updateTime, soundOutputFormat);
+            return ConvertSampleSounds(sounds, targetPath, INDEX, volume, updateTime, soundOutputFormat, outputFormat);
         }
 
         /// <summary>
@@ -170,7 +173,7 @@ namespace ConvertHelper
                 UnitNumerator = unitNumerator,
                 UnitDenominator = unitDenominator,
                 Version = 1,
-                OutputFolder = config["BMS"]["Output"],
+                OutputFolder = config["POPN"]["Output"],
                 Category = "",
                 SoundOutputFormat = config["POPN"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat)
             };
@@ -446,7 +449,15 @@ namespace ConvertHelper
         /// </summary>
         private static bool ConvertFullSongSet(SongInput input, ConversionContext context)
         {
+            string outputFormat = context.Config["POPN"].GetString("OutputFormat", "bms");
+            bool optimizeBmson = IsBmsonOutput(outputFormat) && context.Config["POPN"].GetBool("OptimizeBmsonSounds");
+
+            Sound[] sounds = null;
             int maxIndex = -1;
+            DateTime soundUpdateTime = input.UpdateTime;
+            string databaseTitle = ResolveDatabaseTitle(input.Title, context);
+
+            // First pass: process 2DX to get sounds
             for (int slot = 0; slot < 5; slot++)
             {
                 ChartInput chartInput = ResolveChartInput(input, slot);
@@ -457,15 +468,72 @@ namespace ConvertHelper
                 {
                     string extension = Path.GetExtension(chartInput.Filename).ToUpper();
                     if (extension == @".2DX")
-                        maxIndex = ConvertMainSoundArchive(chartInput.Filename, input.Title, context);
-                    else if (extension == @".BIN")
-                        ConvertPopnChartFile(chartInput, input, maxIndex, context);
+                    {
+                        Console.WriteLine("Converting Samples");
+                        using (MemoryStream source = new MemoryStream(File.ReadAllBytes(chartInput.Filename)))
+                        {
+                            Bemani2DX archive = Bemani2DX.Read(source);
+                            sounds = archive.Sounds;
+                            soundUpdateTime = File.GetLastWriteTime(chartInput.Filename);
+                            if (!optimizeBmson)
+                            {
+                                maxIndex = ConvertSounds(sounds, chartInput.Filename, DefaultSampleVolume, soundUpdateTime, null, context.OutputFolder, databaseTitle, false, context.Category, context.SoundOutputFormat);
+                            }
+                        }
+                    }
                 }
                 catch (Exception e)
                 {
                     PrintConversionException(e);
                     return false;
                 }
+            }
+
+            // Second pass: process BIN charts
+            for (int slot = 0; slot < 5; slot++)
+            {
+                ChartInput chartInput = ResolveChartInput(input, slot);
+                if (chartInput == null)
+                    continue;
+
+                try
+                {
+                    string extension = Path.GetExtension(chartInput.Filename).ToUpper();
+                    if (extension == @".BIN")
+                    {
+                        ResolveCategoryAndVersion(input.Title, context);
+                        using (MemoryStream source = new MemoryStream(File.ReadAllBytes(chartInput.Filename)))
+                        {
+                            Popn archive = Popn.Read(source, context.UnitNumerator, context.UnitDenominator, maxIndex, context.Version);
+                            if (!ApplyDatabaseMetadata(archive.Charts[0], input.Title, chartInput.DifficultyIndex, context))
+                                continue;
+
+                            if (optimizeBmson && sounds != null)
+                            {
+                                PopnToBMS_PackBmson.Register(archive.Charts[0], context.Config, input.Title,
+                                    chartInput.DifficultyIndex, File.GetLastWriteTime(chartInput.Filename),
+                                    context.Category, context.OutputFolder);
+                            }
+                            else
+                            {
+                                ConvertChart(archive.Charts[0], context.Config, input.Title,
+                                    chartInput.DifficultyIndex, null,
+                                    File.GetLastWriteTime(chartInput.Filename), context.Category, context.OutputFolder);
+                            }
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    PrintConversionException(e);
+                    return false;
+                }
+            }
+
+            // Finalize packed bmson
+            if (optimizeBmson && sounds != null && PopnToBMS_PackBmson.PendingCount > 0)
+            {
+                PopnToBMS_PackBmson.Finalize(sounds, DefaultSampleVolume, soundUpdateTime, context.SoundOutputFormat);
             }
 
             return true;
@@ -627,7 +695,7 @@ namespace ConvertHelper
                 CommonBellPath = config["POPN"].GetString("CommonBellPath"),
                 SoundOutputFormat = config["POPN"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat),
                 BmsObjectBase = GetBmsObjectBase(config),
-                OutputFormat = config["BMS"].GetString("OutputFormat", "bms"),
+                OutputFormat = config["POPN"].GetString("OutputFormat", "bms"),
             };
         }
 
@@ -639,7 +707,7 @@ namespace ConvertHelper
             if (config == null)
                 return DefaultBmsObjectBase;
 
-            int configuredBase = config["BMS"].GetValue("BmsObjectBase", DefaultBmsObjectBase);
+            int configuredBase = config["POPN"].GetValue("BmsObjectBase", DefaultBmsObjectBase);
             return configuredBase == 36 ? 36 : 62;
         }
 
@@ -795,9 +863,9 @@ namespace ConvertHelper
         /// <summary>
         /// Writes numbered OGG sample files and returns the longest sample index.
         /// </summary>
-        private static int ConvertSampleSounds(Sound[] sounds, string targetPath, string index, float volume, DateTime updateTime, string soundOutputFormat)
+        private static int ConvertSampleSounds(Sound[] sounds, string targetPath, string index, float volume, DateTime updateTime, string soundOutputFormat, string outputFormat = "bms")
         {
-            targetPath = BuildSampleTargetPath(targetPath, index);
+            targetPath = BuildSampleTargetPath(targetPath, index, outputFormat);
             int maxIndex = FindLongestSampleIndex(sounds);
 
             Parallel.For(0, sounds.Length, SampleEncodingParallelOptions, i =>
@@ -861,11 +929,18 @@ namespace ConvertHelper
         /// <summary>
         /// Creates and returns the output directory for numbered sample files.
         /// </summary>
-        private static string BuildSampleTargetPath(string targetPath, string index)
+        private static string BuildSampleTargetPath(string targetPath, string index, string outputFormat = "bms")
         {
-            targetPath += "\\sounds";
-            if (index != null)
-                targetPath += "_" + index;
+            if (IsBmsonOutput(outputFormat))
+            {
+                targetPath = Path.Combine(targetPath, Bmson.GetSoundFolder(index));
+            }
+            else
+            {
+                targetPath += "\\sounds";
+                if (index != null)
+                    targetPath += "_" + index;
+            }
 
             Common.SafeCreateDirectory(targetPath);
             return targetPath;

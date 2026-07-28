@@ -36,6 +36,16 @@ namespace Scharfrichter.Codec.Sounds.Encoders
 
             ProcessingState processingState = ProcessingState.Create(info);
 
+            // Disable PreExtrapolate via reflection to prevent the Vorbis encoder
+            // from overwriting the head padding with backward-extrapolated audio.
+            // PreExtrapolate fills the first blockSize[1]/2 buffer positions
+            // with LPC-predicted values from subsequent real audio, which causes
+            // the decoded waveform to shift progressively earlier by up to 23ms.
+            var preExtrapolatedField = typeof(ProcessingState).GetField("_preExtrapolated",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (preExtrapolatedField != null)
+                preExtrapolatedField.SetValue(processingState, true);
+
             var comments = new Comments();
             //comments.AddTag("ENCODER", "Scharfrichter");
 
@@ -57,6 +67,22 @@ namespace Scharfrichter.Codec.Sounds.Encoders
             int bytesPerFrame = bytesPerSample * channelCount;
             int usableByteCount = finalData.Length - (finalData.Length % bytesPerFrame);
             const int samplesPerChannelPerChunk = 16384;
+
+            int codecBlockSize = info.CodecSetup.BlockSizes[1];
+            int paddingSamples = codecBlockSize / 2;
+
+            // Prepend paddingSamples of silence at the head to prevent the Vorbis
+            // encoder's PreExtrapolate() from consuming real audio samples.
+            // PreExtrapolate fills the first paddingSamples positions of the
+            // internal buffer with backward-extrapolated values from subsequent
+            // audio. Without head padding, the decoder's first paddingSamples
+            // output samples are synthetic extrapolations that shift the real
+            // audio earlier by ~23ms relative to the original WAV.
+            float[][] silenceBuffer = new float[channelCount][];
+            for (int c = 0; c < channelCount; c++)
+                silenceBuffer[c] = new float[paddingSamples];
+            processingState.WriteData(silenceBuffer, paddingSamples);
+            FlushPackets(processingState, oggStream, target, false);
 
             float[][] floatSamples = new float[channelCount][];
             for (int c = 0; c < channelCount; c++)
@@ -81,6 +107,15 @@ namespace Scharfrichter.Codec.Sounds.Encoders
                 FlushPackets(processingState, oggStream, target, false);
                 byteOffset += chunkByteCount;
             }
+
+            // Append paddingSamples of silence at the tail to prevent the Vorbis
+            // lapped MDCT transform from truncating the end of the audio.
+            // Without this, the encoder's granule position will be short by
+            // exactly paddingSamples, causing the OGG to end earlier than the WAV.
+            for (int c = 0; c < channelCount; c++)
+                silenceBuffer[c] = new float[paddingSamples];
+            processingState.WriteData(silenceBuffer, paddingSamples);
+            FlushPackets(processingState, oggStream, target, false);
 
             // Process the end of the stream (sets the EOS flag)
             processingState.WriteEndOfStream();

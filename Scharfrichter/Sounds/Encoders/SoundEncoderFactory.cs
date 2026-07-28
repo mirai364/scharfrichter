@@ -16,6 +16,8 @@ namespace Scharfrichter.Codec.Sounds.Encoders
                     return new FlacEncoder();
                 case "wav":
                     return new WavEncoder();
+                case "lpcm":
+                    return new WavPcmEncoder();
                 case "mp3":
                     return new Mp3Encoder();
                 default:
@@ -31,13 +33,18 @@ namespace Scharfrichter.Codec.Sounds.Encoders
             string normalized = format.Trim().TrimStart('.').ToLowerInvariant();
             if (normalized == "wave")
                 return "wav";
+            if (normalized == "lpcm")
+                return "lpcm";
 
             return normalized;
         }
 
         public static string GetFileExtension(string format)
         {
-            return NormalizeFormat(format);
+            string normalized = NormalizeFormat(format);
+            if (normalized == "lpcm")
+                return "wav";
+            return normalized;
         }
 
         public static NotSupportedException CreateUnsupportedFormatException(string format)

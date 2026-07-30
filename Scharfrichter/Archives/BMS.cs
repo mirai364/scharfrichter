@@ -965,8 +965,18 @@ namespace Scharfrichter.Codec.Archives
             long common = 1;
             for (int i = 0; i < 2; i++)
                 foreach (Entry entry in entries)
-                    if (common % entry.MetricOffset.Denominator != 0 && common <= int.MaxValue)
-                        common *= entry.MetricOffset.Denominator;
+                {
+                    long denom = entry.MetricOffset.Denominator;
+                    if (denom <= 0)
+                        continue;
+                    if (common % denom != 0 && common <= int.MaxValue)
+                    {
+                        long newCommon = common * denom;
+                        if (newCommon < common)
+                            return common;
+                        common = newCommon;
+                    }
+                }
             return common;
         }
 

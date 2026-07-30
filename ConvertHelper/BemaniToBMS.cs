@@ -1765,6 +1765,8 @@ namespace ConvertHelper
         /// </summary>
         private static void SetFileTimes(string path, DateTime updateTime)
         {
+            if (!File.Exists(path))
+                return;
             File.SetCreationTime(path, updateTime);
             File.SetLastWriteTime(path, updateTime);
             File.SetLastAccessTime(path, updateTime);

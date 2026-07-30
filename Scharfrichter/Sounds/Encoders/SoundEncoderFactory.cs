@@ -20,6 +20,8 @@ namespace Scharfrichter.Codec.Sounds.Encoders
                     return new WavPcmEncoder();
                 case "mp3":
                     return new Mp3Encoder();
+                case "adpcm":
+                    return new WavEncoder();
                 default:
                     throw CreateUnsupportedFormatException(format);
             }
@@ -42,14 +44,14 @@ namespace Scharfrichter.Codec.Sounds.Encoders
         public static string GetFileExtension(string format)
         {
             string normalized = NormalizeFormat(format);
-            if (normalized == "lpcm")
+            if (normalized == "lpcm" || normalized == "adpcm")
                 return "wav";
             return normalized;
         }
 
         public static NotSupportedException CreateUnsupportedFormatException(string format)
         {
-            return new NotSupportedException("Sound output format " + format + " is not supported. Supported formats: ogg, flac, wav, mp3.");
+            return new NotSupportedException("Sound output format " + format + " is not supported. Supported formats: ogg, flac, wav, lpcm, adpcm, mp3.");
         }
     }
 }

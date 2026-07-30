@@ -7,8 +7,7 @@ namespace Scharfrichter.Codec.Sounds.Encoders
 {
     /// <summary>
     /// Writes a linear PCM 16-bit WAV file regardless of the source format.
-    /// Unlike <see cref="WavEncoder"/> which preserves the original WaveFormat
-    /// (e.g. ADPCM), this encoder always outputs uncompressed PCM.
+    /// Sound.Data always contains decoded PCM (raw ADPCM lives in RawData).
     /// </summary>
     public class WavPcmEncoder : ISoundEncoder
     {
@@ -32,7 +31,7 @@ namespace Scharfrichter.Codec.Sounds.Encoders
 
             byte[] finalData = sound.Render(masterVolume);
 
-            // Always force 16-bit PCM stereo, regardless of the source format
+            // Always force 16-bit PCM, preserving the source channel count and sample rate
             WaveFormat pcmFormat = new WaveFormat(sound.Format.SampleRate, 16, sound.Format.Channels);
 
             using (MemoryStream mem = new MemoryStream())

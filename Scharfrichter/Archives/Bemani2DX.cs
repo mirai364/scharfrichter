@@ -71,57 +71,86 @@ namespace Scharfrichter.Codec.Archives
                     break;
             }
 
-            if (result.Type != Bemani2DXType.Unencrypted)
+            try
             {
-                MemoryStream decodedData = new MemoryStream();
-                int filelength = reader.ReadInt32();
-                int fileExtraBytes = (8 - (filelength % 8)) % 8;
-                byte[] data = reader.ReadBytes(filelength + fileExtraBytes);
-                using (MemoryStream encodedDataMem = new MemoryStream(data))
+                if (result.Type != Bemani2DXType.Unencrypted)
                 {
-                    Bemani2DXEncryption.Decrypt(encodedDataMem, decodedData, key, encType);
+                    MemoryStream decodedData = new MemoryStream();
+                    int filelength = reader.ReadInt32();
+                    int fileExtraBytes = (8 - (filelength % 8)) % 8;
+                    byte[] data = reader.ReadBytes(filelength + fileExtraBytes);
+                    using (MemoryStream encodedDataMem = new MemoryStream(data))
+                    {
+                        Bemani2DXEncryption.Decrypt(encodedDataMem, decodedData, key, encType);
+                    }
+                    decodedData.Position = 0;
+                    reader = new BinaryReader(decodedData);
                 }
-                decodedData.Position = 0;
-                reader = new BinaryReader(decodedData);
-            }
 
-            reader.BaseStream.Position = 0x10;
+                reader.BaseStream.Position = 0x10;
 
-            int headerLength = reader.ReadInt32();
-            int sampleCount = reader.ReadInt32();
-            long[] sampleOffset = new long[sampleCount];
+                int headerLength = reader.ReadInt32();
+                int sampleCount = reader.ReadInt32();
+                long[] sampleOffset = new long[sampleCount];
 
-            reader.BaseStream.Position = 0x48;
+                reader.BaseStream.Position = 0x48;
 
-            for (int i = 0; i < sampleCount; i++)
-            {
-                sampleOffset[i] = reader.ReadInt32();
-            }
-
-            byte[][] sampleData = ReadSampleData(reader.BaseStream, sampleOffset);
-            Sound[] decodedSounds = new Sound[sampleData.Length];
-            Parallel.For(0, sampleData.Length, DecodeParallelOptions, i =>
-            {
-                using (MemoryStream sampleStream = new MemoryStream(sampleData[i]))
+                for (int i = 0; i < sampleCount; i++)
                 {
-                    decodedSounds[i] = Bemani2DXSound.Read(sampleStream);
+                    sampleOffset[i] = reader.ReadInt32();
                 }
-            });
-            result.sounds.AddRange(decodedSounds);
+
+                byte[][] sampleData = ReadSampleData(reader.BaseStream, sampleOffset);
+                Sound[] decodedSounds = new Sound[sampleData.Length];
+                Parallel.For(0, sampleData.Length, DecodeParallelOptions, i =>
+                {
+                    if (sampleData[i] == null || sampleData[i].Length == 0)
+                        return;
+                    try
+                    {
+                        using (MemoryStream sampleStream = new MemoryStream(sampleData[i]))
+                        {
+                            decodedSounds[i] = Bemani2DXSound.Read(sampleStream);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        decodedSounds[i] = null;
+                    }
+                });
+                foreach (Sound s in decodedSounds)
+                    if (s != null)
+                        result.sounds.Add(s);
+            }
+            catch (EndOfStreamException)
+            {
+                result.sounds = new List<Sound>();
+            }
 
             return result;
         }
 
         private static byte[][] ReadSampleData(Stream source, long[] sampleOffset)
         {
+            const int MaxSampleBytes = 16 * 1024 * 1024;
             byte[][] sampleData = new byte[sampleOffset.Length][];
+            long streamLength = source.Length;
             for (int i = 0; i < sampleOffset.Length; i++)
             {
-                long nextOffset = i + 1 < sampleOffset.Length ? sampleOffset[i + 1] : source.Length;
-                int length = (int)(nextOffset - sampleOffset[i]);
+                long nextOffset = i + 1 < sampleOffset.Length ? sampleOffset[i + 1] : streamLength;
+                long length = nextOffset - sampleOffset[i];
+                if (length <= 0 || sampleOffset[i] < 0 || sampleOffset[i] >= streamLength || length > MaxSampleBytes)
+                {
+                    sampleData[i] = new byte[0];
+                    continue;
+                }
+                if (sampleOffset[i] + length > streamLength)
+                    length = streamLength - sampleOffset[i];
+                if (length > MaxSampleBytes)
+                    length = MaxSampleBytes;
                 sampleData[i] = new byte[length];
                 source.Position = sampleOffset[i];
-                source.ReadExactly(sampleData[i], 0, length);
+                source.ReadExactly(sampleData[i], 0, (int)length);
             }
 
             return sampleData;

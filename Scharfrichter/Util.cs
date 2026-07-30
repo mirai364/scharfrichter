@@ -374,5 +374,77 @@ namespace Scharfrichter.Codec
                 value = value.Substring(0, value.IndexOf((char)0));
             return value;
         }
+
+        /// <summary>
+        /// Extracts the raw fmt and data chunk bytes from a RIFF WAV stream.
+        /// Used for true ADPCM passthrough output (bypasses NAudio's PCM decode).
+        /// </summary>
+        public static bool TryReadWavRawChunks(byte[] wav, out byte[] fmt, out byte[] data)
+        {
+            fmt = null;
+            data = null;
+            try
+            {
+                if (wav == null || wav.Length < 12) return false;
+                if (wav[0] != 'R' || wav[1] != 'I' || wav[2] != 'F' || wav[3] != 'F') return false;
+                if (wav[8] != 'W' || wav[9] != 'A' || wav[10] != 'V' || wav[11] != 'E') return false;
+
+                int pos = 12;
+                while (pos + 8 <= wav.Length)
+                {
+                    string chunkId = System.Text.Encoding.ASCII.GetString(wav, pos, 4);
+                    int chunkSize = BitConverter.ToInt32(wav, pos + 4);
+                    int dataStart = pos + 8;
+                    int avail = wav.Length - dataStart;
+                    if (chunkSize < 0)
+                        break;
+                    if (chunkId == "fmt " && fmt == null)
+                    {
+                        int size = Math.Min(chunkSize, avail);
+                        fmt = new byte[size];
+                        Array.Copy(wav, dataStart, fmt, 0, size);
+                    }
+                    else if (chunkId == "data" && data == null)
+                    {
+                        int size = Math.Min(chunkSize, avail);
+                        data = new byte[size];
+                        Array.Copy(wav, dataStart, data, 0, size);
+                    }
+
+                    int advance = 8 + chunkSize + (chunkSize & 1);
+                    if (advance <= 0)
+                        break;
+                    pos += advance;
+                }
+
+                return fmt != null && fmt.Length >= 16 && data != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Parses the sample rate and channel count from a raw WAV fmt chunk.
+        /// </summary>
+        public static bool TryParseWavFormatInfo(byte[] fmt, out int sampleRate, out int channels)
+        {
+            sampleRate = 44100;
+            channels = 2;
+            try
+            {
+                if (fmt == null || fmt.Length < 8) return false;
+                channels = BitConverter.ToInt16(fmt, 2);
+                sampleRate = BitConverter.ToInt32(fmt, 4);
+                if (channels <= 0) channels = 2;
+                if (sampleRate <= 0) sampleRate = 44100;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

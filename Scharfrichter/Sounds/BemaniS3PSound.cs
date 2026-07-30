@@ -9,42 +9,55 @@ namespace Scharfrichter.Codec.Sounds
         static public Sound Read(byte[] source)
         {
             Sound result = new Sound();
-            using (MemoryStream sourceStream = new MemoryStream(source, false))
-            using (WaveStream fileReader = new StreamMediaFoundationReader(sourceStream, new MediaFoundationReader.MediaFoundationReaderSettings()))
-            using (WaveStream wavStream = WaveFormatConversionStream.CreatePcmStream(fileReader))
+            try
             {
-                long reportedLength = wavStream.Length;
-                int bufferSize = (reportedLength > 0 && reportedLength <= int.MaxValue) ? (int)reportedLength : 0;
-                if (bufferSize == 0)
+                using (MemoryStream sourceStream = new MemoryStream(source, false))
+                using (WaveStream fileReader = new StreamMediaFoundationReader(sourceStream, new MediaFoundationReader.MediaFoundationReaderSettings()))
+                using (WaveStream wavStream = AcmLockedCreatePcmStream(fileReader))
                 {
-                    // fallback: read in chunks
+                    int bytesToRead = (int)wavStream.Length;
+                    byte[] rawWaveData = new byte[bytesToRead];
+                    wavStream.ReadExactly(rawWaveData, 0, bytesToRead);
+                    result.SetSound(rawWaveData, wavStream.WaveFormat);
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                // truncated WMA: attempt chunked fallback read
+                try
+                {
+                    using (MemoryStream sourceStream = new MemoryStream(source, false))
+                    using (WaveStream fileReader = new StreamMediaFoundationReader(sourceStream, new MediaFoundationReader.MediaFoundationReaderSettings()))
+                    using (WaveStream wavStream = AcmLockedCreatePcmStream(fileReader))
                     using (MemoryStream ms = new MemoryStream())
                     {
                         byte[] block = new byte[4096];
                         int read;
                         while ((read = wavStream.Read(block, 0, block.Length)) > 0)
                             ms.Write(block, 0, read);
-                        result.SetSound(ms.ToArray(), wavStream.WaveFormat);
+                        if (ms.Length > 0)
+                            result.SetSound(ms.ToArray(), wavStream.WaveFormat);
                     }
                 }
-                else
+                catch
                 {
-                    byte[] rawWaveData = new byte[bufferSize];
-                    int totalRead = 0;
-                    while (totalRead < bufferSize)
-                    {
-                        int bytesRead = wavStream.Read(rawWaveData, totalRead, bufferSize - totalRead);
-                        if (bytesRead == 0)
-                            break;
-                        totalRead += bytesRead;
-                    }
-                    if (totalRead < bufferSize)
-                        Array.Resize(ref rawWaveData, totalRead);
-                    result.SetSound(rawWaveData, wavStream.WaveFormat);
+                    // both attempts failed; return empty sound
                 }
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Creates a PCM stream while serializing ACM calls to prevent deadlocks
+        /// during parallel decoding in BemaniS3P.Read().
+        /// </summary>
+        private static WaveStream AcmLockedCreatePcmStream(WaveStream source)
+        {
+            lock (Sound.AcmLock)
+            {
+                return WaveFormatConversionStream.CreatePcmStream(source);
+            }
         }
     }
 }

@@ -41,34 +41,80 @@ namespace Scharfrichter.Codec.Sounds
                 reader.ReadBytes(infoLength - 24);
 
                 byte[] wavData = reader.ReadBytes(dataLength);
-                using (MemoryStream wavDataMem = new MemoryStream(wavData))
+
+                // True ADPCM passthrough: extract the raw fmt/data chunks BEFORE
+                // NAudio's WaveFileReader silently decodes ADPCM to PCM.
+                byte[] rawFmt = null;
+                byte[] rawData = null;
+                bool isAdpcm = Util.TryReadWavRawChunks(wavData, out rawFmt, out rawData) &&
+                               rawFmt != null && rawFmt.Length >= 2 &&
+                               BitConverter.ToInt16(rawFmt, 0) == (short)WaveFormatEncoding.Adpcm;
+
+                if (isAdpcm)
                 {
-                    using (WaveStream wavStream = new WaveFileReader(wavDataMem))
+                    // Keep the raw ADPCM bitstream for passthrough WAV output,
+                    // but ALSO decode to PCM so ogg/flac/mp3/lpcm encoders
+                    // receive valid decoded audio (not a compressed blob).
+                    byte[] pcm;
+                    WaveFormat pcmFormat;
+                    int ch;
+                    int rate;
+                    if (Sound.TryDecodeAdpcmToPcm(rawFmt, rawData, out pcm, out pcmFormat, out ch, out rate))
                     {
-                        int bytesToRead;
-
-                        // using a mux, we force all sounds to be 2 channels
-                        bytesToRead = (int)wavStream.Length;
-
-                        byte[] rawWaveData = new byte[bytesToRead];
-                        wavStream.ReadExactly(rawWaveData, 0, bytesToRead);
-                        result.SetSound(rawWaveData, wavStream.WaveFormat);
-
-                        // calculate output panning
-                        if (panning > 0x7F || panning < 0x01)
-                            panning = 0x40;
-                        result.Panning = ((float)panning - 1.0f) / 126.0f;
-
-                        // calculate output volume
-                        if (volume < 0x01)
-                            volume = 0x01;
-                        else if (volume > 0xFF)
-                            volume = 0xFF;
-                        result.Volume = VolumeTable[volume];
-
-                        result.Channel = channel;
+                        // Sound.Render() assumes stereo. Convert mono PCM to
+                        // stereo (duplicate samples) so playback timing and
+                        // length stay correct for all encoders.
+                        if (ch == 1)
+                        {
+                            int sampleCount = pcm.Length / 2;
+                            byte[] stereo = new byte[sampleCount * 4];
+                            for (int i = 0; i < sampleCount; i++)
+                            {
+                                stereo[i * 4] = pcm[i * 2];
+                                stereo[i * 4 + 1] = pcm[i * 2 + 1];
+                                stereo[i * 4 + 2] = pcm[i * 2];
+                                stereo[i * 4 + 3] = pcm[i * 2 + 1];
+                            }
+                            pcm = stereo;
+                        }
+                        result.Data = pcm;
+                        result.Format = new WaveFormat(rate, 16, 2);
+                    }
+                    else
+                    {
+                        result.Data = rawData;
+                        result.Format = WaveFormat.CreateCustomFormat(WaveFormatEncoding.Adpcm, rate, ch, 0, 0, 4);
+                    }
+                    result.RawData = rawData;
+                    result.FormatData = rawFmt;
+                }
+                else
+                {
+                    using (MemoryStream wavDataMem = new MemoryStream(wavData))
+                    {
+                        using (WaveStream wavStream = new WaveFileReader(wavDataMem))
+                        {
+                            int bytesToRead = (int)wavStream.Length;
+                            byte[] rawWaveData = new byte[bytesToRead];
+                            wavStream.ReadExactly(rawWaveData, 0, bytesToRead);
+                            result.SetSound(rawWaveData, wavStream.WaveFormat);
+                        }
                     }
                 }
+
+                // calculate output panning
+                if (panning > 0x7F || panning < 0x01)
+                    panning = 0x40;
+                result.Panning = ((float)panning - 1.0f) / 126.0f;
+
+                // calculate output volume
+                if (volume < 0x01)
+                    volume = 0x01;
+                else if (volume > 0xFF)
+                    volume = 0xFF;
+                result.Volume = VolumeTable[volume];
+
+                result.Channel = channel;
             }
 
             return result;

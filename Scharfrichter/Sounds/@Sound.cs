@@ -7,9 +7,26 @@ namespace Scharfrichter.Codec.Sounds
 {
     public class Sound
     {
+        /// <summary>
+        /// Lock object that serializes calls to Windows ACM (Audio Compression Manager)
+        /// via NAudio's WaveFormatConversionStream. ACM is not thread-safe; concurrent
+        /// calls can cause deadlocks inside kernel-mode codec drivers.
+        /// </summary>
+        internal static readonly object AcmLock = new object();
+
         public int Channel = -1;
         public byte[] Data { get; set; }
         public WaveFormat Format { get; set; }
+        /// <summary>
+        /// Raw compressed ADPCM byte content (from the WAV data chunk).
+        /// Used for true ADPCM passthrough output via WavEncoder.
+        /// When null, Data contains decoded PCM.
+        /// </summary>
+        public byte[] RawData;
+        /// <summary>
+        /// Raw byte content of the WAV fmt chunk. Used for true ADPCM passthrough output.
+        /// </summary>
+        public byte[] FormatData;
         public string Name = "";
         public float Panning = 0.5f;
         public bool PanningIsLinear = false;
@@ -135,7 +152,11 @@ namespace Scharfrichter.Codec.Sounds
                 WaveStream wavConvertStream = null;
                 try
                 {
-                    wavConvertStream = WaveFormatConversionStream.CreatePcmStream(wavStream);
+                    // ACM is not thread-safe - serialize CreatePcmStream calls
+                    lock (AcmLock)
+                    {
+                        wavConvertStream = WaveFormatConversionStream.CreatePcmStream(wavStream);
+                    }
 
                     // Force all sounds to 2 channels
                     MultiplexingWaveProvider sourceProvider = new MultiplexingWaveProvider(new IWaveProvider[] { wavConvertStream }, 2);
@@ -155,6 +176,84 @@ namespace Scharfrichter.Codec.Sounds
                 {
                     wavConvertStream?.Dispose();
                 }
+            }
+        }
+
+        /// <summary>
+        /// Decodes raw ADPCM fmt+data chunks to 16-bit PCM.
+        /// Data always holds decoded PCM; RawData/FormatData hold the original
+        /// compressed bitstream for true ADPCM passthrough output.
+        /// </summary>
+        public static bool TryDecodeAdpcmToPcm(byte[] fmt, byte[] rawData, out byte[] pcm, out WaveFormat pcmFormat, out int channels, out int sampleRate)
+        {
+            pcm = null;
+            pcmFormat = null;
+            channels = 1;
+            sampleRate = 44100;
+            try
+            {
+                // Rebuild the original WAV from raw chunks.
+                byte[] wavBytes;
+                using (MemoryStream ms = new MemoryStream())
+                using (BinaryWriter bw = new BinaryWriter(ms, System.Text.Encoding.ASCII, true))
+                {
+                    bw.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+                    bw.Write(20 + fmt.Length + rawData.Length);
+                    bw.Write(System.Text.Encoding.ASCII.GetBytes("WAVE"));
+                    bw.Write(System.Text.Encoding.ASCII.GetBytes("fmt "));
+                    bw.Write(fmt.Length);
+                    bw.Write(fmt);
+                    bw.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+                    bw.Write(rawData.Length);
+                    bw.Write(rawData);
+                    bw.Flush();
+                    wavBytes = ms.ToArray();
+                }
+
+                using (MemoryStream wavMem = new MemoryStream(wavBytes))
+                using (WaveStream wavStream = new WaveFileReader(wavMem))
+                {
+                    WaveStream pcmStream = null;
+                    try
+                    {
+                        lock (AcmLock)
+                        {
+                            pcmStream = WaveFormatConversionStream.CreatePcmStream(wavStream);
+                        }
+
+                        channels = pcmStream.WaveFormat.Channels;
+                        sampleRate = pcmStream.WaveFormat.SampleRate;
+                        if (channels <= 0) channels = 1;
+                        if (sampleRate <= 0) sampleRate = 44100;
+
+                        int bytesToRead = (int)pcmStream.Length;
+                        if (bytesToRead <= 0)
+                            return false;
+
+                        byte[] buffer = new byte[bytesToRead];
+                        int totalRead = 0;
+                        while (totalRead < bytesToRead)
+                        {
+                            int n = pcmStream.Read(buffer, totalRead, bytesToRead - totalRead);
+                            if (n == 0)
+                                break;
+                            totalRead += n;
+                        }
+                        pcm = new byte[totalRead];
+                        Array.Copy(buffer, 0, pcm, 0, totalRead);
+                        pcmFormat = WaveFormat.CreateCustomFormat(WaveFormatEncoding.Pcm, sampleRate, (short)channels, sampleRate * 2 * channels, (short)(2 * channels), 16);
+                        return totalRead > 0;
+                    }
+                    finally
+                    {
+                        pcmStream?.Dispose();
+                    }
+                }
+            }
+            catch
+            {
+                pcm = null;
+                return false;
             }
         }
 

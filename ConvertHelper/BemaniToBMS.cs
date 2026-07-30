@@ -1671,6 +1671,9 @@ namespace ConvertHelper
         /// </summary>
         private static void ConvertPreviewSound(Sound[] sounds, string targetPath, float volume, DateTime updateTime, string soundOutputFormat)
         {
+            if (sounds == null || sounds.Length == 0)
+                return;
+
             string output = Path.Combine(targetPath, @"preview" + @"." + SoundEncoderFactory.GetFileExtension(soundOutputFormat));
             ISoundEncoder encoder = SoundEncoderFactory.Create(soundOutputFormat);
             encoder.EncodeToFile(sounds[0], output, volume);

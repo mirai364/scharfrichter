@@ -152,29 +152,35 @@ namespace Scharfrichter.Codec.Sounds
                 WaveStream wavConvertStream = null;
                 try
                 {
-                    // ACM is not thread-safe - serialize CreatePcmStream calls
+                    // ACM is not thread-safe - serialize CreatePcmStream, Read AND Dispose calls.
+                    // CreatePcmStream only opens the stream; the actual acmStreamConvert
+                    // work happens inside Read(), and Dispose() calls acmStreamClose.
+                    // All three touch the ACM subsystem and must be under the lock.
                     lock (AcmLock)
                     {
-                        wavConvertStream = WaveFormatConversionStream.CreatePcmStream(wavStream);
+                        try
+                        {
+                            wavConvertStream = WaveFormatConversionStream.CreatePcmStream(wavStream);
+
+                            // Force all sounds to 2 channels
+                            MultiplexingWaveProvider sourceProvider = new MultiplexingWaveProvider(new IWaveProvider[] { wavConvertStream }, 2);
+                            int bytesToRead = (int)((wavConvertStream.Length * 2) / wavConvertStream.WaveFormat.Channels);
+                            byte[] rawWaveData = new byte[bytesToRead];
+                            sourceProvider.Read(rawWaveData, 0, bytesToRead);
+
+                            Data = rawWaveData;
+                            Format = sourceProvider.WaveFormat;
+                        }
+                        finally
+                        {
+                            wavConvertStream?.Dispose();
+                        }
                     }
-
-                    // Force all sounds to 2 channels
-                    MultiplexingWaveProvider sourceProvider = new MultiplexingWaveProvider(new IWaveProvider[] { wavConvertStream }, 2);
-                    int bytesToRead = (int)((wavConvertStream.Length * 2) / wavConvertStream.WaveFormat.Channels);
-                    byte[] rawWaveData = new byte[bytesToRead];
-                    sourceProvider.Read(rawWaveData, 0, bytesToRead);
-
-                    Data = rawWaveData;
-                    Format = sourceProvider.WaveFormat;
                 }
                 catch
                 {
                     Data = data;
                     Format = sourceFormat;
-                }
-                finally
-                {
-                    wavConvertStream?.Dispose();
                 }
             }
         }
@@ -213,40 +219,43 @@ namespace Scharfrichter.Codec.Sounds
                 using (MemoryStream wavMem = new MemoryStream(wavBytes))
                 using (WaveStream wavStream = new WaveFileReader(wavMem))
                 {
-                    WaveStream pcmStream = null;
-                    try
+                    // CreatePcmStream opens the stream, Read() performs acmStreamConvert,
+                    // and Dispose() calls acmStreamClose - all touch the ACM subsystem
+                    // and must be under the lock.
+                    lock (AcmLock)
                     {
-                        lock (AcmLock)
+                        WaveStream pcmStream = null;
+                        try
                         {
                             pcmStream = WaveFormatConversionStream.CreatePcmStream(wavStream);
+
+                            channels = pcmStream.WaveFormat.Channels;
+                            sampleRate = pcmStream.WaveFormat.SampleRate;
+                            if (channels <= 0) channels = 1;
+                            if (sampleRate <= 0) sampleRate = 44100;
+
+                            int bytesToRead = (int)pcmStream.Length;
+                            if (bytesToRead <= 0)
+                                return false;
+
+                            byte[] buffer = new byte[bytesToRead];
+                            int totalRead = 0;
+                            while (totalRead < bytesToRead)
+                            {
+                                int n = pcmStream.Read(buffer, totalRead, bytesToRead - totalRead);
+                                if (n == 0)
+                                    break;
+                                totalRead += n;
+                            }
+                            pcm = new byte[totalRead];
+                            Array.Copy(buffer, 0, pcm, 0, totalRead);
+                            pcmFormat = WaveFormat.CreateCustomFormat(WaveFormatEncoding.Pcm, sampleRate, (short)channels, sampleRate * 2 * channels, (short)(2 * channels), 16);
+                            return totalRead > 0;
                         }
-
-                        channels = pcmStream.WaveFormat.Channels;
-                        sampleRate = pcmStream.WaveFormat.SampleRate;
-                        if (channels <= 0) channels = 1;
-                        if (sampleRate <= 0) sampleRate = 44100;
-
-                        int bytesToRead = (int)pcmStream.Length;
-                        if (bytesToRead <= 0)
-                            return false;
-
-                        byte[] buffer = new byte[bytesToRead];
-                        int totalRead = 0;
-                        while (totalRead < bytesToRead)
+                        finally
                         {
-                            int n = pcmStream.Read(buffer, totalRead, bytesToRead - totalRead);
-                            if (n == 0)
-                                break;
-                            totalRead += n;
+                            pcmStream?.Dispose();
                         }
-                        pcm = new byte[totalRead];
-                        Array.Copy(buffer, 0, pcm, 0, totalRead);
-                        pcmFormat = WaveFormat.CreateCustomFormat(WaveFormatEncoding.Pcm, sampleRate, (short)channels, sampleRate * 2 * channels, (short)(2 * channels), 16);
-                        return totalRead > 0;
-                    }
-                    finally
-                    {
-                        pcmStream?.Dispose();
                     }
                 }
             }

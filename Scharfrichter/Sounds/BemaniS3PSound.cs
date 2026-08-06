@@ -11,14 +11,19 @@ namespace Scharfrichter.Codec.Sounds
             Sound result = new Sound();
             try
             {
-                using (MemoryStream sourceStream = new MemoryStream(source, false))
-                using (WaveStream fileReader = new StreamMediaFoundationReader(sourceStream, new MediaFoundationReader.MediaFoundationReaderSettings()))
-                using (WaveStream wavStream = AcmLockedCreatePcmStream(fileReader))
+                // CreatePcmStream only opens the stream; the actual acmStreamConvert
+                // work happens inside Read(), so the entire decode must be under the lock.
+                lock (Sound.AcmLock)
                 {
-                    int bytesToRead = (int)wavStream.Length;
-                    byte[] rawWaveData = new byte[bytesToRead];
-                    wavStream.ReadExactly(rawWaveData, 0, bytesToRead);
-                    result.SetSound(rawWaveData, wavStream.WaveFormat);
+                    using (MemoryStream sourceStream = new MemoryStream(source, false))
+                    using (WaveStream fileReader = new StreamMediaFoundationReader(sourceStream, new MediaFoundationReader.MediaFoundationReaderSettings()))
+                    using (WaveStream wavStream = WaveFormatConversionStream.CreatePcmStream(fileReader))
+                    {
+                        int bytesToRead = (int)wavStream.Length;
+                        byte[] rawWaveData = new byte[bytesToRead];
+                        wavStream.ReadExactly(rawWaveData, 0, bytesToRead);
+                        result.SetSound(rawWaveData, wavStream.WaveFormat);
+                    }
                 }
             }
             catch (EndOfStreamException)
@@ -26,17 +31,20 @@ namespace Scharfrichter.Codec.Sounds
                 // truncated WMA: attempt chunked fallback read
                 try
                 {
-                    using (MemoryStream sourceStream = new MemoryStream(source, false))
-                    using (WaveStream fileReader = new StreamMediaFoundationReader(sourceStream, new MediaFoundationReader.MediaFoundationReaderSettings()))
-                    using (WaveStream wavStream = AcmLockedCreatePcmStream(fileReader))
-                    using (MemoryStream ms = new MemoryStream())
+                    lock (Sound.AcmLock)
                     {
-                        byte[] block = new byte[4096];
-                        int read;
-                        while ((read = wavStream.Read(block, 0, block.Length)) > 0)
-                            ms.Write(block, 0, read);
-                        if (ms.Length > 0)
-                            result.SetSound(ms.ToArray(), wavStream.WaveFormat);
+                        using (MemoryStream sourceStream = new MemoryStream(source, false))
+                        using (WaveStream fileReader = new StreamMediaFoundationReader(sourceStream, new MediaFoundationReader.MediaFoundationReaderSettings()))
+                        using (WaveStream wavStream = WaveFormatConversionStream.CreatePcmStream(fileReader))
+                        using (MemoryStream ms = new MemoryStream())
+                        {
+                            byte[] block = new byte[4096];
+                            int read;
+                            while ((read = wavStream.Read(block, 0, block.Length)) > 0)
+                                ms.Write(block, 0, read);
+                            if (ms.Length > 0)
+                                result.SetSound(ms.ToArray(), wavStream.WaveFormat);
+                        }
                     }
                 }
                 catch
@@ -46,18 +54,6 @@ namespace Scharfrichter.Codec.Sounds
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// Creates a PCM stream while serializing ACM calls to prevent deadlocks
-        /// during parallel decoding in BemaniS3P.Read().
-        /// </summary>
-        private static WaveStream AcmLockedCreatePcmStream(WaveStream source)
-        {
-            lock (Sound.AcmLock)
-            {
-                return WaveFormatConversionStream.CreatePcmStream(source);
-            }
         }
     }
 }

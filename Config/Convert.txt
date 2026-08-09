@@ -77,3 +77,8 @@ OUTPUT=
 OutputFormat=bms
 BmsObjectBase=62
 OptimizeBmsonSounds=false
+[CHUNI]
+SoundOutputFormat=ogg
+MusicFolder=
+CueFileFolder=
+OUTPUT=

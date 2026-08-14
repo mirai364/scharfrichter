@@ -149,7 +149,7 @@ namespace ConvertHelper
         static public int ConvertSounds(Sound[] sounds, string filename, float volume, DateTime updateTime, string INDEX = null, string outputFolder = "", string nameInfo = "", bool isPre2DX = false, string version = "", string soundOutputFormat = SoundEncoderFactory.DefaultFormat, string outputFormat = "bms")
         {
             string name = GetSoundSetName(filename, nameInfo);
-            // Build output path: version\[DB_TITLE]\[ファイル名]
+            // Build output path: version\[DB_TITLE]\[filename]
             // For previews, the filename subdirectory is omitted
             // e.g. "unknown\pops\pops" (not in DB, regular sounds)
             // e.g. "unknown\pops" (not in DB, preview)

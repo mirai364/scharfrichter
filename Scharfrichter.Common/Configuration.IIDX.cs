@@ -52,6 +52,10 @@ namespace Scharfrichter.Common
             config["POPN"].SetDefaultBool("OptimizeBmsonSounds", false);
             config["POPN"].SetDefaultBool("EnableCommonBell", false);
             config["POPN"].SetDefaultString("CommonBellPath", @"..\..\0000.wav");
+            config["CHUNI"].SetDefaultString("SoundOutputFormat", "ogg");
+            config["CHUNI"].SetDefaultString("MusicFolder", "");
+            config["CHUNI"].SetDefaultString("CueFileFolder", "");
+            config["CHUNI"].SetDefaultString("Output", "");
             return config;
         }
 

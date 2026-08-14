@@ -17,6 +17,12 @@ namespace Scharfrichter.Codec.Archives
         public ChartChuni chart;
 
         /// <summary>
+        /// Gets or sets the sound file extension used by the #WAVE header tag.
+        /// Defaults to "wav" when null.
+        /// </summary>
+        public string SoundExtension { get; set; }
+
+        /// <summary>
         /// Initializes an empty SUS archive wrapper.
         /// </summary>
         public SUS() { }
@@ -140,7 +146,8 @@ namespace Scharfrichter.Codec.Archives
         {
             int delayPoint = 0;
             Dictionary<int, Fraction> bpmMap = new Dictionary<int, Fraction>();
-            BinaryWriter writer = new BinaryWriter(target, Encoding.GetEncoding(932));
+            // SUS spec requires UTF-8 encoding.
+            BinaryWriter writer = new BinaryWriter(target, new UTF8Encoding(false));
             SusWriteBuffers buffers = new SusWriteBuffers();
 
             PrepareHeaderTags();
@@ -164,13 +171,16 @@ namespace Scharfrichter.Codec.Archives
         /// </summary>
         private void WriteHeader(StreamWriter writer)
         {
-            string wave = "music.wav";
+            // BGM extension matches the [CHUNI] SoundOutputFormat codec.
+            string wave = "music." + (SoundExtension ?? "wav");
             string waveOffset = "0";
             string jacket = "jacket.jpg";
 
             writer.WriteLine("Music info");
             writer.WriteLine("#TITLE \"" + chart.Tags["TITLE"] + "\"");
             writer.WriteLine("#ARTIST \"" + chart.Tags["ARTIST"] + "\"");
+            if (chart.Tags.ContainsKey("GENRE") && !string.IsNullOrEmpty(chart.Tags["GENRE"]))
+                writer.WriteLine("#GENRE \"" + chart.Tags["GENRE"] + "\"");
             writer.WriteLine("#DESIGNER \"" + chart.Tags["DESIGNER"] + "\"");
             writer.WriteLine("#DIFFICULTY " + chart.Tags["TYPE"]);
             writer.WriteLine("#PLAYLEVEL " + chart.Tags["PLAYLEVEL"]);
@@ -178,11 +188,13 @@ namespace Scharfrichter.Codec.Archives
             writer.WriteLine("#WAVE \"" + wave + "\"");
             writer.WriteLine("#WAVEOFFSET " + waveOffset);
             writer.WriteLine("#JACKET \"" + jacket + "\"");
+            writer.WriteLine("#BACKGROUND \"" + jacket + "\"");
             writer.WriteLine("#BASEBPM " + chart.Tags["BPM"]);
             writer.WriteLine("");
             writer.WriteLine("Request");
             writer.WriteLine("#REQUEST \"mertonome enabled\"");
             writer.WriteLine("#REQUEST \"ticks_per_beat 480\"");
+            writer.WriteLine("#REQUEST \"enable_priority true\"");
             writer.WriteLine("");
             writer.WriteLine("BPM");
         }
@@ -403,6 +415,9 @@ namespace Scharfrichter.Codec.Archives
 
         /// <summary>
         /// Fills marker values for one SUS channel line.
+        /// Each CHUNITHM value (type*100 + width) is converted to the SUS
+        /// channel code: the type digit and width digit are each base-36.
+        /// Freeze entries keep their sentinel value 1295 ("ZZ" in base 36).
         /// </summary>
         private static bool FillMarkerValues(int[] values, List<EntryChuni> entries, long common, long commonDivisor, ref bool repeat)
         {
@@ -410,10 +425,28 @@ namespace Scharfrichter.Codec.Archives
             foreach (EntryChuni entry in entries)
             {
                 int offset = GetValueOffset(entry, common, commonDivisor);
-                if (TryPlaceValue(values, offset, entry.Freeze ? 1295 : (int)(double)entry.Value, entry, ref repeat))
+                if (TryPlaceValue(values, offset, entry.Freeze ? 1295 : EncodeSusValue(entry), entry, ref repeat))
                     write = true;
             }
             return write;
+        }
+
+        /// <summary>
+        /// Converts an encoded CHUNITHM value (type*100 + width) into the SUS
+        /// channel code where the type digit and width digit are each base-36
+        /// digits. The result is written as a 2-character base-36 pair by
+        /// WriteChannelLine.
+        /// </summary>
+        private static int EncodeSusValue(EntryChuni entry)
+        {
+            int value = (int)entry.Value.Numerator;
+            int type = value / 100;
+            int width = value % 100;
+            if (type < 0) type = 0;
+            if (type > 35) type = 35;
+            if (width < 0) width = 0;
+            if (width > 35) width = 35;
+            return type * 36 + width;
         }
 
         /// <summary>
@@ -501,7 +534,7 @@ namespace Scharfrichter.Codec.Archives
             StringBuilder builder = new StringBuilder();
             builder.Append("#" + measureString + laneString + ":");
             for (int i = 0; i < values.Length; i++)
-                builder.Append(values[i].ToString("00"));
+                builder.Append(Util.ConvertToBMEString(values[i], 2));
 
             GetSectionWriter(buffers, player).WriteLine(builder.ToString());
         }
@@ -537,6 +570,7 @@ namespace Scharfrichter.Codec.Archives
                 writer.WriteLine("");
                 writer.WriteLine("#TIL00: " + "\"" + chart.Tags["TIL00"] + "\"");
                 writer.WriteLine("#HISPEED 00");
+                writer.WriteLine("#NOSPEED");
             }
         }
 
@@ -566,15 +600,12 @@ namespace Scharfrichter.Codec.Archives
             return writer;
         }
 
-        /// <summary>
-        /// Formats a measure number as a three-digit SUS value.
-        /// </summary>
         private static string FormatMeasureNumber(int measure)
         {
-            string measureString = measure.ToString();
-            while (measureString.Length < 3)
-                measureString = "0" + measureString;
-            return measureString;
+            string result = measure.ToString();
+            while (result.Length < 3)
+                result = "0" + result;
+            return result;
         }
     }
 }

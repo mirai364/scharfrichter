@@ -2,6 +2,7 @@ using DDSReader;
 using Scharfrichter.Codec;
 using Scharfrichter.Codec.Archives;
 using Scharfrichter.Codec.Charts;
+using Scharfrichter.Codec.Sounds.Encoders;
 using Scharfrichter.Common;
 using System;
 using System.Collections.Generic;
@@ -191,6 +192,11 @@ namespace ConvertHelper
                 case @".DDS":
                     ConvertDds(filename, context);
                     break;
+                case @".ACB":
+                case @".AWB":
+                    // ACB/AWB audio extraction (AcbToWav.Convert)
+                    AcbToWav.Convert(new[] { filename });
+                    break;
             }
         }
 
@@ -211,12 +217,14 @@ namespace ConvertHelper
 
         /// <summary>
         /// Converts one DDS jacket image to jacket.jpg next to the SUS output.
+        /// Output goes to the CHUNI output folder (or BMS Output as fallback).
         /// </summary>
         private static void ConvertDds(string filename, ConversionContext context)
         {
             MusicXmlInfo musicInfo = LoadMusicXml(filename);
             DDSImage img = new DDSImage(filename);
-            string dirPath = Path.Combine(context.Config["BMS"]["Output"], Common.nameReplace(musicInfo.Genre), Common.nameReplace(musicInfo.Title), "jacket.jpg");
+            string outputRoot = GetOutputRoot(context.Config);
+            string dirPath = Path.Combine(outputRoot, Common.nameReplace(musicInfo.Genre), Common.nameReplace(musicInfo.Title), "jacket.jpg");
             img.Save(dirPath);
         }
 
@@ -264,19 +272,45 @@ namespace ConvertHelper
             string type = row.Element("type").Element("id").Value;
             if (type == "4")
             {
+                string star = "";
+                switch (musicXml.Element("starDifType").Value)
+                {
+                    case "9":
+                        star = "5";
+                        break;
+                    case "7":
+                        star = "4";
+                        break;
+                    case "5":
+                        star = "3";
+                        break;
+                    case "3":
+                        star = "2";
+                        break;
+                    case "1":
+                        star = "1";
+                        break;
+                }
+
                 return new MusicData
                 {
                     type = type + ":" + musicXml.Element("worldsEndTagName").Element("str").Value,
                     typeName = row.Element("type").Element("data").Value,
-                    level = musicXml.Element("starDifType").Value
+                    level = star
                 };
+            }
+
+            string levelDecimal = "";
+            if (int.Parse(row.Element("levelDecimal").Value) >= 50)
+            {
+                levelDecimal = "+";
             }
 
             return new MusicData
             {
                 type = type,
                 typeName = row.Element("type").Element("data").Value,
-                level = row.Element("level").Value
+                level = row.Element("level").Value + levelDecimal
             };
         }
 
@@ -302,6 +336,11 @@ namespace ConvertHelper
         {
             SUS sus = new SUS();
             sus.chart = chart;
+
+            // BGM extension matches the [CHUNI] SoundOutputFormat codec.
+            Configuration config = Configuration.LoadIIDXConfig(Common.configFileName);
+            string soundFormat = SoundEncoderFactory.NormalizeFormat(config["CHUNI"].GetString("SoundOutputFormat", SoundEncoderFactory.DefaultFormat));
+            sus.SoundExtension = SoundEncoderFactory.GetFileExtension(soundFormat);
 
             string name = ResolveChartName(chart, filename);
             sus.chart.Tags["TITLE"] = name;
@@ -338,12 +377,14 @@ namespace ConvertHelper
 
         /// <summary>
         /// Builds the final SUS output path and creates its directory.
+        /// Output goes to the CHUNI output folder (or BMS Output as fallback).
         /// </summary>
         private static string BuildSusOutputPath(ChartChuni chart, Configuration config, string filename)
         {
             string name = Common.nameReplace(ResolveChartName(chart, filename));
             string genre = Common.nameReplace(chart.Tags["GENRE"]);
-            string dirPath = Path.Combine(config["BMS"]["Output"], genre, name);
+            string outputRoot = GetOutputRoot(config);
+            string dirPath = Path.Combine(outputRoot, genre, name);
 
             if (chart.Tags["TYPENAME"] == "WORLD'S END")
                 name += "(" + chart.Tags["TYPENAME"] + " " + chart.Tags["TYPE"].Substring(2) + chart.Tags["PLAYLEVEL"] + ")";
@@ -352,6 +393,18 @@ namespace ConvertHelper
 
             Common.SafeCreateDirectory(dirPath);
             return Path.Combine(dirPath, name + ".sus");
+        }
+
+        /// <summary>
+        /// Resolves the output root folder. Uses [CHUNI] OUTPUT when set,
+        /// otherwise falls back to [BMS] OUTPUT.
+        /// </summary>
+        private static string GetOutputRoot(Configuration config)
+        {
+            string chuniOutput = config["CHUNI"]["Output"];
+            if (!string.IsNullOrEmpty(chuniOutput))
+                return chuniOutput;
+            return config["BMS"]["Output"];
         }
 
         /// <summary>

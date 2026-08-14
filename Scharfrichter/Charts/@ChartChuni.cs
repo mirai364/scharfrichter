@@ -643,6 +643,18 @@ namespace Scharfrichter.Codec.Charts
         public EntryTypeChuni Type;
         public bool Used;
 
+        // CHUNITHM extended fields (used by ChuniToUgc):
+        //   Tag          - CHR/FLK direction, or AIR/AHD/AHX color (C2S string kept as-is)
+        //   Height       - ASD/ALD start height (C2S raw value)
+        //   EndHeight    - ASD/ALD end height (C2S raw value)
+        //   CrushInterval- ALD crush interval (in 384 ticks per measure)
+        //   TargetNote   - C2S targetNote column value (ASD/ASC chain reference)
+        public string Tag = "";
+        public double Height;
+        public double EndHeight;
+        public int CrushInterval;
+        public string TargetNote = "";
+
         /// <summary>
         /// Compares entries by timing, lane metadata, and special event ordering.
         /// </summary>
@@ -847,5 +859,3 @@ namespace Scharfrichter.Codec.Charts
         EndOfSong
     }
 }
-
-

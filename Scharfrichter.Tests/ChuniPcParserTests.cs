@@ -1,0 +1,282 @@
+using Scharfrichter.Codec.Charts;
+using System;
+using System.IO;
+using System.Linq;
+using System.Text;
+using Xunit;
+
+namespace Scharfrichter.Tests
+{
+    /// <summary>
+    /// ChuniPC C2S parser unit tests.
+    /// Verifies that the CHUNITHM note records are parsed into the
+    /// EntryChuni structures with correct Player / Column / Value /
+    /// Parameter (companion) / Tag / Height / EndHeight / CrushInterval.
+    /// </summary>
+    public class ChuniPcParserTests
+    {
+        private static ChartChuni Parse(string c2sText)
+        {
+            using (StreamReader reader = new StreamReader(new MemoryStream(Encoding.UTF8.GetBytes(c2sText))))
+            {
+                return ChuniPC.Read(reader);
+            }
+        }
+
+        [Fact]
+        public void ParsesTapWithWidth()
+        {
+            var chart = Parse("RESOLUTION\t384\nTAP\t0\t0\t0\t4\n");
+            EntryChuni tap = chart.Entries.First(e => e.Type == EntryTypeChuni.Marker && e.Player == 1);
+            Assert.Equal(0, tap.Column);
+            Assert.Equal(104, tap.Value.Numerator); // type 1, width 4
+        }
+
+        [Fact]
+        public void ParsesChrWithDirectionTag()
+        {
+            var chart = Parse("RESOLUTION\t384\nCHR\t0\t96\t4\t3\tUP\n");
+            EntryChuni chr = chart.Entries.First(e => e.Type == EntryTypeChuni.Marker && e.Player == 1);
+            Assert.Equal(4, chr.Column);
+            Assert.Equal(203, chr.Value.Numerator); // type 2, width 3
+            Assert.Equal("UP", chr.Tag);
+        }
+
+        [Fact]
+        public void ParsesHoldStartEndPair()
+        {
+            var chart = Parse("RESOLUTION\t384\nHLD\t1\t0\t0\t3\t384\n");
+            var holds = chart.Entries.Where(e => e.Type == EntryTypeChuni.Marker && e.Player == 2).ToList();
+            Assert.Equal(2, holds.Count); // start + end
+            var start = holds.First(e => (int)(e.Value.Numerator / 100) == 1);
+            var end = holds.First(e => (int)(e.Value.Numerator / 100) == 2);
+            Assert.Equal(start.Identifier, end.Identifier);
+            // The end linear offset is 384 ticks (1 measure) after the start.
+            double startLinear = (double)start.LinearOffset;
+            double endLinear = (double)end.LinearOffset;
+            Assert.True(endLinear > startLinear);
+        }
+
+        [Fact]
+        public void ParsesAirHoldWithChrCompanion()
+        {
+            var chart = Parse("RESOLUTION\t384\nAHD\t25\t96\t5\t3\tCHR\t192\n");
+            EntryChuni ahd = chart.Entries.First(e => e.Type == EntryTypeChuni.Marker && e.Player == 4);
+            Assert.Equal(5, ahd.Column);
+            Assert.Equal(103, ahd.Value.Numerator); // type 1 (start), width 3
+            // CHR companion -> Parameter 0 (CHR/TAP/FLK are not linked-ground codes)
+            Assert.Equal(0, ahd.Parameter);
+            // The companion lane-note (Player 1, Parameter -1) must exist for SUS.
+            EntryChuni companion = chart.Entries.FirstOrDefault(e =>
+                e.Type == EntryTypeChuni.Marker && e.Player == 1 && e.Parameter == -1);
+            Assert.NotNull(companion);
+            Assert.Equal(5, companion.Column);
+            Assert.Equal(203, companion.Value.Numerator); // CHR type 2, width 3
+        }
+
+        [Fact]
+        public void ParsesAirHoldWithHoldCompanion()
+        {
+            var chart = Parse("RESOLUTION\t384\nAHD\t7\t0\t0\t4\tHLD\t96\n");
+            EntryChuni ahd = chart.Entries.First(e => e.Type == EntryTypeChuni.Marker && e.Player == 4);
+            // HLD companion -> Parameter 2 (PlayerHold)
+            Assert.Equal(2, ahd.Parameter);
+        }
+
+        [Fact]
+        public void ParsesAirHoldWithSlideCompanion()
+        {
+            var chart = Parse("RESOLUTION\t384\nAHD\t7\t192\t4\t4\tSLD\t96\n");
+            EntryChuni ahd = chart.Entries.First(e => e.Type == EntryTypeChuni.Marker && e.Player == 4);
+            Assert.Equal(3, ahd.Parameter); // SLD/SLC -> PlayerSlide
+        }
+
+        [Fact]
+        public void ParsesAirHoldColor()
+        {
+            var chart = Parse("RESOLUTION\t384\nAHD\t7\t0\t0\t4\tCHR\t96\tGRN\n");
+            EntryChuni ahd = chart.Entries.First(e => e.Type == EntryTypeChuni.Marker && e.Player == 4);
+            Assert.Equal("GRN", ahd.Tag);
+        }
+
+        [Fact]
+        public void ParsesAirWithHoldCompanion()
+        {
+            var chart = Parse("RESOLUTION\t384\nAIR\t7\t0\t0\t3\tHLD\tDEF\n");
+            EntryChuni air = chart.Entries.First(e => e.Type == EntryTypeChuni.Marker && e.Player == 5);
+            Assert.Equal(2, air.Parameter); // HLD companion
+            Assert.Equal("DEF", air.Tag);
+        }
+
+        [Fact]
+        public void ParsesAirDirectionTypes()
+        {
+            var chart = Parse("RESOLUTION\t384\n" +
+                "AIR\t0\t0\t0\t1\n" +
+                "AUL\t0\t96\t0\t1\n" +
+                "AUR\t0\t192\t0\t1\n" +
+                "ADW\t1\t0\t0\t1\n" +
+                "ADL\t1\t96\t0\t1\n" +
+                "ADR\t1\t192\t0\t1\n");
+            var airs = chart.Entries.Where(e => e.Type == EntryTypeChuni.Marker && e.Player == 5)
+                .OrderBy(e => (double)e.LinearOffset).ToList();
+            Assert.Equal(6, airs.Count);
+            // AIR=100, ADW=200, AUL=300, AUR=400, ADL=500, ADR=600 (+ width 1)
+            Assert.Equal(101, airs[0].Value.Numerator);   // AIR
+            Assert.Equal(201, airs[3].Value.Numerator);   // ADW
+            Assert.Equal(301, airs[1].Value.Numerator);   // AUL
+            Assert.Equal(401, airs[2].Value.Numerator);   // AUR
+            Assert.Equal(501, airs[4].Value.Numerator);   // ADL
+            Assert.Equal(601, airs[5].Value.Numerator);   // ADR
+        }
+
+        [Fact]
+        public void ParsesHardHoldAndHardSlide()
+        {
+            var chart = Parse("RESOLUTION\t384\n" +
+                "HXD\t5\t0\t0\t3\t384\n" +
+                "SXD\t6\t0\t0\t3\t384\t4\t2\n" +
+                "SXC\t7\t0\t4\t2\t384\t3\t1\n");
+            // HXD start entry (type 1 = start) carries Tag = "HXD"
+            var hxd = chart.Entries.First(e =>
+                e.Type == EntryTypeChuni.Marker && e.Player == 2 &&
+                (int)(e.Value.Numerator / 100) == 1 && e.Column == 0);
+            Assert.Equal("HXD", hxd.Tag);
+
+            // SXD start entry (cell 0, type 1)
+            var sxd = chart.Entries.First(e =>
+                e.Type == EntryTypeChuni.Marker && e.Player == 3 &&
+                (int)(e.Value.Numerator / 100) == 1 && e.Column == 0);
+            Assert.Equal("SXD", sxd.Tag);
+
+            // SXC start entry. The SXD end point also sits at cell 4, so the
+            // SXC start merges into that entry (value becomes type 3,
+            // "connected waypoint"); look it up by Tag instead.
+            var sxc = chart.Entries.First(e =>
+                e.Type == EntryTypeChuni.Marker && e.Player == 3 && e.Tag == "SXC");
+            Assert.NotNull(sxc);
+        }
+
+        [Fact]
+        public void ParsesAirSlideMetadata()
+        {
+            var chart = Parse("RESOLUTION\t384\nASD\t8\t0\t0\t3\tTAP\t5\t384\t4\t2\t5\tGRN\n");
+            EntryChuni asd = chart.Entries.First(e => e.Type == EntryTypeChuni.Marker && e.Player == 6 && (int)(e.Value.Numerator / 100) == 1);
+            Assert.Equal(0, asd.Column);
+            Assert.Equal(103, asd.Value.Numerator); // type 1, width 3
+            Assert.Equal(5, asd.Height);
+            Assert.Equal(5, asd.EndHeight);
+            Assert.Equal("GRN", asd.Tag);
+            Assert.Equal("TAP", asd.TargetNote);
+        }
+
+        [Fact]
+        public void ParsesAirCrushMetadata()
+        {
+            var chart = Parse("RESOLUTION\t384\nALD\t10\t0\t0\t4\t96\t5\t384\t4\t3\t5\tRED\n");
+            EntryChuni ald = chart.Entries.First(e => e.Type == EntryTypeChuni.Marker && e.Player == 7 && (int)(e.Value.Numerator / 100) == 1);
+            Assert.Equal(0, ald.Column);
+            Assert.Equal(104, ald.Value.Numerator); // type 1, width 4
+            Assert.Equal(96, ald.CrushInterval);
+            Assert.Equal(5, ald.Height);
+            Assert.Equal(5, ald.EndHeight);
+            Assert.Equal("RED", ald.Tag);
+        }
+
+        [Fact]
+        public void ParsesMetAsBeat()
+        {
+            var chart = Parse("RESOLUTION\t384\nMET\t2\t0\t4\t3\n");
+            EntryChuni met = chart.Entries.First(e => e.Type == EntryTypeChuni.Event && e.Value.Denominator != 0);
+            Assert.Equal(2, met.Parameter);
+            Assert.Equal(3, met.Value.Numerator);
+            Assert.Equal(4, met.Value.Denominator);
+        }
+
+        [Fact]
+        public void ParsesTempoChanges()
+        {
+            var chart = Parse("RESOLUTION\t384\nBPM\t0\t0\t180.000000\nBPM\t4\t0\t120.000000\n");
+            var tempos = chart.Entries.Where(e => e.Type == EntryTypeChuni.Tempo).OrderBy(e => (double)e.LinearOffset).ToList();
+            Assert.Equal(2, tempos.Count);
+            Assert.Equal(180, (double)tempos[0].Value, 3);
+            Assert.Equal(120, (double)tempos[1].Value, 3);
+            Assert.Equal(180, (double)chart.DefaultBPM, 3);
+        }
+
+        [Fact]
+        public void FullSnippetSlideChainDebug()
+        {
+            // Full-chart slice L425-L470. L448 SLD (40,0 col7->8) must remain
+            // its own chain; dump all Slide (Player 3) entries to see the
+            // identifier / column structure.
+            var chart = Parse(
+                "RESOLUTION\t384\n" +
+                "SLC\t38\t33\t9\t4\t16\t8\t4\n" +
+                "SLC\t38\t49\t8\t4\t22\t7\t4\n" +
+                "SLC\t38\t71\t7\t4\t25\t6\t4\n" +
+                "TAP\t38\t96\t0\t4\n" +
+                "SLC\t38\t96\t6\t4\t48\t5\t4\n" +
+                "SLD\t38\t144\t5\t4\t144\t5\t4\n" +
+                "SLD\t38\t192\t0\t4\t96\t1\t2\n" +
+                "AHD\t38\t288\t1\t2\tSLD\t96\n" +
+                "SLD\t38\t288\t5\t4\t96\t6\t2\n" +
+                "SLD\t39\t0\t0\t4\t96\t1\t2\n" +
+                "AHD\t39\t0\t6\t2\tSLD\t96\n" +
+                "AHD\t39\t96\t1\t2\tSLD\t96\n" +
+                "TAP\t39\t96\t5\t4\n" +
+                "TAP\t39\t192\t0\t4\n" +
+                "SLC\t39\t192\t5\t4\t9\t6\t4\n" +
+                "SLC\t39\t201\t6\t4\t11\t7\t4\n" +
+                "SLC\t39\t212\t7\t4\t13\t8\t4\n" +
+                "SLC\t39\t225\t8\t4\t16\t9\t4\n" +
+                "SLC\t39\t241\t9\t4\t22\t10\t4\n" +
+                "SLC\t39\t263\t10\t4\t25\t11\t4\n" +
+                "TAP\t39\t288\t4\t4\n" +
+                "SLC\t39\t288\t11\t4\t48\t12\t4\n" +
+                "SLD\t39\t336\t12\t4\t144\t12\t4\n" +
+                "SLD\t40\t0\t7\t4\t96\t8\t2\n" +
+                "AHD\t40\t96\t8\t2\tSLD\t96\n" +
+                "SLD\t40\t96\t12\t4\t96\t13\t2\n" +
+                "SLD\t40\t192\t7\t4\t96\t8\t2\n" +
+                "AHD\t40\t192\t13\t2\tSLD\t96\n" +
+                "AHD\t40\t288\t8\t2\tSLD\t96\n" +
+                "TAP\t40\t288\t12\t4\n" +
+                "TAP\t41\t0\t7\t4\n");
+
+            // L448 (40,0 col7) and L451 (40,192 col7) have the same column 7.
+            // They should NOT be merged into one chain because their start
+            // times differ. Verify L448 has a start with type 1 at col 7.
+            var slides = chart.Entries.Where(e =>
+                e.Type == EntryTypeChuni.Marker && e.Player == 3).ToList();
+
+            // At least the type-1 start for L448 exists.
+            bool hasL448Start = slides.Any(e =>
+                (int)(e.Value.Numerator / 100) == 1 &&
+                e.Column == 7 &&
+                (int)(double)e.LinearOffset == 40 * 384);
+            Assert.True(hasL448Start, "L448 SLD start not found");
+
+            // Keep the assertion-based verification only.
+        }
+
+        [Fact]
+        public void SameTimingDifferentColumnsKeepSeparateAhdPairs()
+        {
+            var chart = Parse("RESOLUTION\t384\n" +
+                "CHR\t25\t96\t5\t3\tUP\n" +
+                "AHD\t25\t96\t5\t3\tCHR\t192\n" +
+                "CHR\t25\t96\t8\t3\tUP\n" +
+                "AHD\t25\t96\t8\t3\tCHR\t192\n");
+            var ahds = chart.Entries.Where(e => e.Type == EntryTypeChuni.Marker && e.Player == 4).ToList();
+            Assert.Equal(4, ahds.Count); // 2 pairs (start+end each)
+
+            // The two AHD starts on columns 5 and 8 at the same time.
+            var ahdStart5 = ahds.First(e => e.Column == 5 && (int)(e.Value.Numerator / 100) == 1);
+            var ahdStart8 = ahds.First(e => e.Column == 8 && (int)(e.Value.Numerator / 100) == 1);
+            Assert.NotNull(ahdStart5);
+            Assert.NotNull(ahdStart8);
+            Assert.NotEqual(ahdStart5.Identifier, ahdStart8.Identifier);
+        }
+    }
+}

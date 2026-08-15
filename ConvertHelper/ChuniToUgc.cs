@@ -1185,16 +1185,10 @@ namespace ConvertHelper
         {
             List<NoteUnit> units = new List<NoteUnit>();
 
-            // Collect marker entries, skipping AHD companion AIR markers.
             List<EntryChuni> markers = new List<EntryChuni>();
             foreach (EntryChuni entry in chart.Entries)
             {
                 if (entry.Type != EntryTypeChuni.Marker || entry.Player <= 0)
-                    continue;
-
-                // Skip the companion AIR marker emitted by ChuniPC for AHD lines
-                // (value 1000+); it is represented by the AIR-HOLD itself.
-                if (entry.Player == PlayerAir && (int)(entry.Value.Numerator / 100) >= 10)
                     continue;
 
                 markers.Add(entry);

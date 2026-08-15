@@ -34,7 +34,6 @@ namespace Scharfrichter.Codec.Charts
             public Dictionary<Point, List<int>> AirHoldPending = new Dictionary<Point, List<int>>();
             public Dictionary<Point, List<int>> AirSlidePending = new Dictionary<Point, List<int>>();
             public Dictionary<Point, List<int>> AirCrushPending = new Dictionary<Point, List<int>>();
-            public ChartChuni MetChart = new ChartChuni();
         }
 
         /// <summary>
@@ -50,7 +49,7 @@ namespace Scharfrichter.Codec.Charts
                 ProcessLine(line, state);
             }
 
-            AddMeasureEntries(state.Chart, state.CurrentMeasure, state.Resolution, state.MetChart);
+            AddMeasureEntries(state.Chart, state.CurrentMeasure, state.Resolution);
             FinalizeChart(state.Chart);
             return state.Chart;
         }
@@ -145,7 +144,6 @@ namespace Scharfrichter.Codec.Charts
             // so the UGC converter can emit @BEAT at the original measure.
             entry.Parameter = currentMeasure;
             state.Chart.Entries.Add(entry);
-            state.MetChart.Entries.Add(entry);
         }
 
         /// <summary>
@@ -449,7 +447,7 @@ namespace Scharfrichter.Codec.Charts
             // C2S AHD layout: AHD M O Cell Width TargetNote Duration [Color]
             // The companion (TargetNote, col 5) and duration (col 6) are always
             // present (7 columns total, index 0..6); an optional color lives in
-            // column 7 (index 7). Use >= 7 so the companion is always extracted.
+            // column 7 (index 7).
             int endLinearOffset = startLinearOffset + int.Parse(parts[6]);
             AddLinkedMarkerPair(state.Chart, state.AirHoldPending, ref state.AirHoldResetPoint, 4, startLinearOffset, endLinearOffset, notesPosition, notesWidth, notesPosition, notesWidth, 200);
 
@@ -619,16 +617,11 @@ namespace Scharfrichter.Codec.Charts
         }
 
         /// <summary>
-        /// Adds measure entries, splitting at MET positions that occur in the
-        /// middle of a measure. Measures are numbered by their chart measure
-        /// (0,1,2,...); any MET strictly inside a chart measure inserts an extra
-        /// measure boundary, which shifts the following measures by +1 in the
-        /// metric-offset pass.
+        /// Adds measure entries. Measures are numbered by their chart measure
+        /// (0,1,2,...), so the metric-offset pass can build measure boundaries.
         /// </summary>
-        private static void AddMeasureEntries(ChartChuni chart, int currentMeasure, int resolution, ChartChuni metChart)
+        private static void AddMeasureEntries(ChartChuni chart, int currentMeasure, int resolution)
         {
-            // Emit one measure entry per chart measure, plus an extra boundary
-            // for any MET strictly inside the current measure.
             for (int m = 0; m <= currentMeasure + 10; m++)
                 EmitMeasure(chart, m * resolution);
         }

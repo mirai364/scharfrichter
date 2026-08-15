@@ -12,157 +12,6 @@ namespace Scharfrichter.Codec.Charts
         public Fraction DefaultBPM = new Fraction(0, 1);
         public Fraction TickRate = new Fraction(0, 1);
 
-        public int quantizeNotes { get; set; }
-        public bool isSameFolderMovie { get; set; }
-
-
-        // Add judgement entries to the list. It's unsure if these are needed, but
-        // it can be used if there are compatibility issues with converted arcade data.
-        // IIDX: F0, FA, FF, 03, 08, 12
-        // 5key: F4, FC, FF, 03, 06, 0E
-        public void AddJudgements()
-        {
-            int[] judgementValues = new int[] { 0xF0, 0xFA, 0xFF, 0x03, 0x08, 0x12 };
-            int judgementCount = judgementValues.Length;
-            int playerCount = Players;
-
-            for (int j = 0; j < playerCount; j++)
-            {
-                for (int i = 0; i < judgementCount; i++)
-                {
-                    var entry = new EntryChuni();
-                    entry.Column = 0;
-                    entry.LinearOffset = new Fraction(0, 1);
-                    entry.MetricMeasure = 0;
-                    entry.MetricOffset = new Fraction(0, 1);
-                    entry.Parameter = i;
-                    entry.Player = j + 1;
-                    entry.Type = EntryTypeChuni.Judgement;
-                    entry.Value = new Fraction(judgementValues[i], 1);
-                    entries.Add(entry);
-                }
-            }
-        }
-
-        // Add measure line entries to the list. Can only be used when
-        // metric data is present.
-        public void AddMeasureLines()
-        {
-            int measureCount = -1;
-            int playerCount = Players;
-
-            // verify all required metric info is present
-            foreach (var entry in entries)
-                if (!entry.MetricOffsetInitialized)
-                    throw new Exception("Measure lines can't be added because at least one entry is missing Metric offset information.");
-
-            // clear up existing ones
-            RemoveMeasureLines();
-
-            // find the highest measure index
-            foreach (var entry in entries)
-            {
-                if (entry.MetricMeasure >= measureCount)
-                    measureCount = entry.MetricMeasure + 1;
-            }
-
-            // add measure lines for each measure
-            for (int i = 0; i < measureCount; i++)
-            {
-                for (int j = 0; j < playerCount; j++)
-                {
-                    var entry = new EntryChuni();
-                    entry.Column = 0;
-                    entry.MetricMeasure = i;
-                    entry.MetricOffset = new Fraction(0, 1);
-                    entry.Player = j + 1;
-                    entry.Type = EntryTypeChuni.Measure;
-                    entry.Value = new Fraction(0, 1);
-                    entries.Add(entry);
-                }
-            }
-
-            // add end of song marker
-            if (measureCount >= 0)
-            {
-                for (int j = 0; j < playerCount; j++)
-                {
-                    var entry = new EntryChuni();
-                    entry.Column = 0;
-                    entry.MetricMeasure = measureCount;
-                    entry.MetricOffset = new Fraction(0, 1);
-                    entry.Player = j + 1;
-                    entry.Type = EntryTypeChuni.EndOfSong;
-                    entry.Value = new Fraction(0, 1);
-                    entries.Add(entry);
-                }
-            }
-        }
-
-        // Convert Metric offsets to Linear offsets for the entry list.
-        public void CalculateLinearOffsets()
-        {
-            // verify all required metric info is present
-            foreach (var entry in entries)
-                if (!entry.MetricOffsetInitialized)
-                    throw new Exception("Linear offsets can't be calculated because at least one entry is missing Metric offset information.");
-
-            // delete all linear offset data
-            ClearLinearOffsets();
-
-            // make sure everything is sorted before we begin
-            entries.Sort();
-
-            // initialization
-            Fraction baseLinear = new Fraction(0, 1);
-            Fraction bpm = DefaultBPM;
-            Fraction lastMetric = new Fraction(0, 1);
-            Fraction length = new Fraction(0, 1);
-            int measure = -1;
-            Fraction measureRate = new Fraction(0, 1);
-            Fraction rate = new Fraction(0, 1);
-
-            // BPM into seconds per measure
-            measureRate = Util.CalculateMeasureRate(bpm);
-
-            foreach (var entry in entries)
-            {
-                // on measures, update rate information
-                if (entry.Type == EntryTypeChuni.Measure)
-                {
-                    baseLinear += rate;
-                    measure = entry.MetricMeasure;
-
-                    if (lengths.ContainsKey(measure))
-                    {
-                        length = lengths[measure];
-                        rate = length * measureRate;
-                    }
-                    else
-                    {
-                        length = new Fraction(1, 1);
-                        rate = measureRate;
-                    }
-                    lastMetric = new Fraction(0, 1);
-                }
-
-                // calculate linear offset
-                Fraction entryOffset = entry.MetricOffset;
-                entryOffset -= lastMetric;
-                entryOffset *= rate;
-                entryOffset += baseLinear;
-                entry.LinearOffset = entryOffset;
-
-                // on tempo change, update rate information
-                if (entry.Type == EntryTypeChuni.Tempo)
-                {
-                    measureRate = Util.CalculateMeasureRate(bpm);
-                    rate = length * measureRate;
-                    lastMetric = entry.MetricOffset;
-                }
-            }
-        }
-
         /// <summary>
         /// Converts linear offsets into metric offsets for the entry list.
         /// </summary>
@@ -381,36 +230,12 @@ namespace Scharfrichter.Codec.Charts
             }
         }
 
-        // clear the Used flag on all entries
-        public void ClearUsed()
-        {
-            foreach (var entry in entries)
-                entry.Used = false;
-        }
-
         // Entries property
         public List<EntryChuni> Entries
         {
             get
             {
                 return entries;
-            }
-        }
-
-        // Measures property
-        public int Measures
-        {
-            get
-            {
-                int measureCount = -1;
-
-                // find the highest measure index
-                foreach (var entry in entries)
-                {
-                    if (entry.MetricMeasure >= measureCount)
-                        measureCount = entry.MetricMeasure + 1;
-                }
-                return measureCount + 1;
             }
         }
 
@@ -423,152 +248,6 @@ namespace Scharfrichter.Codec.Charts
             }
         }
 
-        // determine the number of notes a player must play
-        public int NoteCount(int player)
-        {
-            int result = 0;
-
-            foreach (var entry in entries)
-                if (entry.Type == EntryTypeChuni.Marker && entry.Player == player)
-                    result++;
-
-            return result;
-        }
-
-        // determine the number of non-bgm notes
-        public int NoteTotal
-        {
-            get
-            {
-                int result = 0;
-
-                foreach (var entry in entries)
-                    if (entry.Type == EntryTypeChuni.Marker && entry.Player > 0)
-                        result++;
-
-                return result;
-            }
-        }
-
-        // determine the number of players
-        public int Players
-        {
-            get
-            {
-                int result = 0;
-                foreach (var entry in entries)
-                {
-                    if ((entry.Type == EntryTypeChuni.Marker || entry.Type == EntryTypeChuni.Sample) && (entry.Player > result))
-                        result = entry.Player;
-                }
-                return result;
-            }
-        }
-
-        // quantize measure lengths so that they are easier to decipher.
-        // many people use BMSE, and BMSE doesn't like measure lengths that are not a multiple of 1/64,
-        // so this is here to please the people that still use it. (I hate you guys.)
-        public void QuantizeMeasureLengths(int quantizeValue)
-        {
-            // verify all required metric info is present
-            foreach (var entry in entries)
-                if (!entry.MetricOffsetInitialized)
-                    throw new Exception("Measure lengths can't be quantized because at least one entry is missing Metric offset information.");
-
-            double quantizationFloat = quantizeValue;
-            int measureCount = Measures;
-            Fraction lengthBefore = Fraction.Rationalize(TotalMeasureLength);
-
-            // quantize the measure lengths
-            for (int i = 0; i < measureCount; i++)
-            {
-                if (lengths.ContainsKey(i))
-                {
-                    if (lengths[i].Denominator != quantizeValue)
-                        lengths[i] = new Fraction((long)(Math.Round((double)Fraction.Shrink(lengths[i]) * quantizationFloat)), quantizeValue);
-                }
-            }
-
-#if (true)
-            // since we adjusted measure lengths, we also need to adjust BPMs
-            Fraction lengthAfter = Fraction.Rationalize(TotalMeasureLength);
-            Fraction ratio = lengthAfter / lengthBefore;
-
-            foreach (var entry in entries)
-            {
-                if (entry.Type == EntryTypeChuni.Tempo)
-                {
-                    entry.Value *= ratio;
-                }
-            }
-
-            DefaultBPM *= ratio;
-#endif
-
-#if (false) // disabled for now because it is a little buggy and we need to get a release out
-            // regenerate linear offsets because the values could have changed
-            CalculateLinearOffsets();
-#endif
-        }
-
-        // quantize Metric note offsets. This is useful for reducing the size of a
-        // converted BMS file.
-        public void QuantizeNoteOffsets()
-        {
-            int quantizeValue = this.quantizeNotes;
-            // verify all required metric info is present
-            foreach (var entry in entries)
-                if (!entry.MetricOffsetInitialized)
-                    throw new Exception("Metric note offsets can't be quantized because at least one entry is missing Metric offset information.");
-
-            int measure = 0;
-            Fraction lastMeasure = new Fraction(0, 1);
-            long quantize = 0;
-
-            // quantize each event
-            foreach (var entry in entries)
-            {
-                if (entry.Type == EntryTypeChuni.Measure || quantize == 0)
-                {
-                    if (entry.Type == EntryTypeChuni.Measure && entry.MetricOffset != lastMeasure)
-                        measure++;
-
-                    if (lengths.ContainsKey(measure))
-                        quantize = quantizeValue * (long)(Math.Round((double)lengths[measure]));
-                    else
-                        quantize = quantizeValue;
-                }
-
-                if (quantize == 0)
-                    quantize = 192;
-
-                if (entry.Type == EntryTypeChuni.Marker && entry.MetricOffset.Denominator > quantize)
-                    entry.MetricOffset = Fraction.Quantize(entry.MetricOffset, quantize);
-                else
-                    entry.MetricOffset = Fraction.Reduce(entry.MetricOffset);
-            }
-        }
-
-        // remove all judgement information from the chart.
-        public void RemoveJudgements()
-        {
-            foreach (var entry in entries)
-            {
-                if (entry.Type == EntryTypeChuni.Judgement)
-                    entry.Type = EntryTypeChuni.Invalid;
-            }
-        }
-
-        // remove all measure lines from the chart.
-        public void RemoveMeasureLines()
-        {
-            foreach (var entry in entries)
-            {
-                if (entry.Type == EntryTypeChuni.Measure || entry.Type == EntryTypeChuni.EndOfSong)
-                    entry.Type = EntryTypeChuni.Invalid;
-            }
-        }
-
         // Tags property
         public Dictionary<string, string> Tags
         {
@@ -576,51 +255,6 @@ namespace Scharfrichter.Codec.Charts
             {
                 return tags;
             }
-        }
-
-        // get the sum of all measure lengths.
-        public double TotalMeasureLength
-        {
-            get
-            {
-                double result = 0;
-                int measureCount = Measures;
-                for (int i = 0; i < measureCount; i++)
-                {
-                    if (lengths.ContainsKey(i))
-                    {
-                        result += (double)lengths[i];
-                    }
-                    else
-                    {
-                        result += 1;
-                    }
-                }
-                return result;
-            }
-        }
-
-        // get a list of samples used in the chart. It can be used as a sample map.
-        public int[] UsedSamples()
-        {
-            List<int> result = new List<int>();
-            foreach (var entry in entries)
-            {
-                if (entry.Type == EntryTypeChuni.Marker || entry.Type == EntryTypeChuni.Sample)
-                {
-                    int val = (int)((double)entry.Value);
-                    if (val > 0)
-                    {
-                        if (!result.Contains(val))
-                        {
-                            result.Add(val);
-                        }
-                    }
-                }
-            }
-
-            result.Sort();
-            return result.ToArray();
         }
     }
 
@@ -637,11 +271,9 @@ namespace Scharfrichter.Codec.Charts
 
         public int Column;
         public int Identifier = 0;
-        public bool Freeze;
         public int Parameter;
         public int Player;
         public EntryTypeChuni Type;
-        public bool Used;
 
         // CHUNITHM extended fields (used by ChuniToUgc):
         //   Tag          - CHR/FLK direction, or AIR/AHD/AHX color (C2S string kept as-is)
@@ -714,9 +346,6 @@ namespace Scharfrichter.Codec.Charts
             if (order != 0)
                 return order;
             order = ComparePreferredFirst(Type, other.Type, EntryTypeChuni.Tempo);
-            if (order != 0)
-                return order;
-            order = ComparePreferredFirst(Type, other.Type, EntryTypeChuni.Sample);
             if (order != 0)
                 return order;
             return ComparePreferredLast(Type, other.Type, EntryTypeChuni.EndOfSong);
@@ -808,27 +437,6 @@ namespace Scharfrichter.Codec.Charts
             }
         }
 
-        // some functions don't really care what kind of offset there is as long as there's some way
-        // to sort them by time- this property should remain read-only for this reason
-        public Fraction Offset
-        {
-            get
-            {
-                if (linearOffset.Denominator != 0)
-                {
-                    return linearOffset;
-                }
-                else if (metricOffset.Denominator != 0)
-                {
-                    return metricOffset;
-                }
-                else
-                {
-                    return new Fraction(0, 1);
-                }
-            }
-        }
-
         public Fraction Value
         {
             get
@@ -849,13 +457,9 @@ namespace Scharfrichter.Codec.Charts
     {
         Invalid,
         Marker,
-        Sample,
         Tempo,
         Measure,
-        Mine,
         Event,
-        Judgement,
-        BGA,
         EndOfSong
     }
 }

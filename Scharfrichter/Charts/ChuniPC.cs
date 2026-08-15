@@ -439,18 +439,10 @@ namespace Scharfrichter.Codec.Charts
         }
 
         /// <summary>
-        /// Adds an air-hold marker pair, optionally preceded by a companion
-        /// note (TAP / CHR / HLD / SLD / AHD / AIR). The companion note is
-        /// stored as an independent single note (Player 1) so the SUS
-        /// converter renders it on the lane, not as part of the AIR-HOLD
-        /// chain. The encoded value carries the companion's own note type so
-        /// CHR companions become ExTAP and TAP companions become TAP.
-        ///
-        /// The companion entry is marked with Parameter = -1 so the UGC
-        /// converter can skip it: in UGC the AIR-HOLD (H) is self-contained
-        /// and the companion lane note already exists as an independent row
-        /// in the C2S data. Emitting an extra TAP here would sit between a
-        /// neighbouring AIR and its Previous and break UMIGURI's resolver.
+        /// Adds an air-hold marker pair. The companion note (TAP / CHR / HLD /
+        /// SLD / AHD / AIR) already exists as an independent row in the C2S
+        /// data, so the UGC converter renders the AIR-HOLD (H) as a
+        /// self-contained note without emitting an extra lane note.
         /// </summary>
         private static void AddAirHoldMarkerPair(string[] parts, ReadState state, int startLinearOffset, int notesPosition, int notesWidth)
         {
@@ -458,18 +450,6 @@ namespace Scharfrichter.Codec.Charts
             // The companion (TargetNote, col 5) and duration (col 6) are always
             // present (7 columns total, index 0..6); an optional color lives in
             // column 7 (index 7). Use >= 7 so the companion is always extracted.
-            if (parts.Length >= 7)
-            {
-                string companionType = parts[5];
-                var anotherEntry = new EntryChuni();
-                anotherEntry.Type = EntryTypeChuni.Marker;
-                anotherEntry.Player = 1; // independent lane note (SUS only)
-                anotherEntry.LinearOffset = new Fraction(startLinearOffset, 1);
-                anotherEntry.Column = notesPosition;
-                anotherEntry.Value = new Fraction(MapCompanionTypeBase(companionType) + notesWidth, 1);
-                anotherEntry.Parameter = -1; // marker not written to UGC
-                state.Chart.Entries.Add(anotherEntry);
-            }
             int endLinearOffset = startLinearOffset + int.Parse(parts[6]);
             AddLinkedMarkerPair(state.Chart, state.AirHoldPending, ref state.AirHoldResetPoint, 4, startLinearOffset, endLinearOffset, notesPosition, notesWidth, notesPosition, notesWidth, 200);
 
@@ -492,31 +472,6 @@ namespace Scharfrichter.Codec.Charts
                         entry.Tag = ahColor;
                     break;
                 }
-            }
-        }
-
-        /// <summary>
-        /// Returns the encoded value base (type*100) for a CHUNITHM companion
-        /// note type. Targets the single-note encodings used by the
-        /// downstream converters: TAP=1xx, CHR=2xx, FLK=3xx, MNE=4xx.
-        /// </summary>
-        private static int MapCompanionTypeBase(string companionType)
-        {
-            switch (companionType)
-            {
-                case "TAP": return 100;
-                case "CHR": return 200;
-                case "FLK": return 300;
-                case "MNE": return 400;
-                case "HLD":
-                case "SLD":
-                case "SLC":
-                case "AHD":
-                case "AIR":
-                default:
-                    // The AIR-HOLD itself is rendered separately; a non-tap
-                    // companion is best represented as a TAP at that position.
-                    return 100;
             }
         }
 

@@ -336,8 +336,7 @@ namespace ConvertHelper
 
         private static string BuildOutputPath(ChartChuni chart, string filename, MusicMetadata meta)
         {
-            // Output to the same folder as ChuniToSus:
-            //   [CHUNI] OUTPUT when set, otherwise [BMS] OUTPUT
+            // Output to the [CHUNI] OUTPUT folder, or [BMS] OUTPUT as fallback.
             Configuration config = Configuration.LoadIIDXConfig(Common.configFileName);
             string chuniOutput = config["CHUNI"]["Output"];
             string outputRoot = string.IsNullOrEmpty(chuniOutput) ? config["BMS"]["Output"] : chuniOutput;
@@ -1196,14 +1195,6 @@ namespace ConvertHelper
                 // Skip the companion AIR marker emitted by ChuniPC for AHD lines
                 // (value 1000+); it is represented by the AIR-HOLD itself.
                 if (entry.Player == PlayerAir && (int)(entry.Value.Numerator / 100) >= 10)
-                    continue;
-
-                // Skip the AHD companion lane-note (Parameter == -1). The
-                // AIR-HOLD (H) is self-contained in UGC and the companion row
-                // already exists as an independent note in the C2S data;
-                // emitting an extra TAP here would sit between a neighbouring
-                // AIR and its Previous and break UMIGURI's resolver.
-                if (entry.Player == PlayerTap && entry.Parameter == -1)
                     continue;
 
                 markers.Add(entry);

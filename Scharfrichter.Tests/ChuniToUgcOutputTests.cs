@@ -743,6 +743,50 @@ namespace Scharfrichter.Tests
         }
 
         [Fact]
+        public void WorldEndChartFileLabelIsWeAttrPlusStars()
+        {
+            // Several WORLD'S END charts can exist for one song, so the file
+            // name label for a WORLD'S END chart must be "WEATTR☆☆...☆"
+            // (attribute + one star per level), e.g. "蔵☆☆☆☆☆", rather than
+            // the generic "WORLD'S END" text.
+            var type = typeof(ConvertHelper.ChuniToUgc);
+            var labelMethod = type.GetMethod("BuildChartFileLabel",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(labelMethod);
+
+            var chartMetaType = type.GetNestedType("MusicChartMeta", BindingFlags.NonPublic);
+            Assert.NotNull(chartMetaType);
+
+            object chartMeta = Activator.CreateInstance(chartMetaType, nonPublic: true);
+            chartMetaType.GetField("IsWorldsEnd", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).SetValue(chartMeta, true);
+            chartMetaType.GetField("WeAttr", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).SetValue(chartMeta, "蔵");
+            chartMetaType.GetField("Level", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).SetValue(chartMeta, "5");
+            chartMetaType.GetField("TypeName", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).SetValue(chartMeta, "WORLD'S END");
+
+            string label = (string)labelMethod.Invoke(null, new object[] { chartMeta });
+            Assert.Equal("蔵☆☆☆☆☆", label);
+        }
+
+        [Fact]
+        public void NonWorldEndChartFileLabelIsTypeName()
+        {
+            var type = typeof(ConvertHelper.ChuniToUgc);
+            var labelMethod = type.GetMethod("BuildChartFileLabel",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(labelMethod);
+
+            var chartMetaType = type.GetNestedType("MusicChartMeta", BindingFlags.NonPublic);
+            Assert.NotNull(chartMetaType);
+
+            object chartMeta = Activator.CreateInstance(chartMetaType, nonPublic: true);
+            chartMetaType.GetField("IsWorldsEnd", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).SetValue(chartMeta, false);
+            chartMetaType.GetField("TypeName", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).SetValue(chartMeta, "MASTER");
+
+            string label = (string)labelMethod.Invoke(null, new object[] { chartMeta });
+            Assert.Equal("MASTER", label);
+        }
+
+        [Fact]
         public void WorldEndFumenSetsWeAttrFromMusicXml()
         {
             // SDBT 1.50 identifies the WORLD'S END fumen with type id 5

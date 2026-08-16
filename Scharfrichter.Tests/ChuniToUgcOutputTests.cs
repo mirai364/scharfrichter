@@ -42,6 +42,54 @@ namespace Scharfrichter.Tests
             }
         }
 
+        private static ChartChuni ParseChart(string c2sText)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(c2sText);
+            using (StreamReader reader = new StreamReader(new MemoryStream(bytes)))
+            {
+                var archive = ChuniC2S.Read(reader, 480, 4);
+                Assert.NotNull(archive.chart);
+                return archive.chart;
+            }
+        }
+
+        /// <summary>
+        /// Writes a Music.xml into a temporary folder and returns that folder,
+        /// so the (private) LoadMusicMetadata / WriteUgc flow can be tested
+        /// end to end without the real game data.
+        /// </summary>
+        private static string CreateMusicXmlFolder(string musicXml)
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "chuni-ugc-test-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "Music.xml"), musicXml, Encoding.UTF8);
+            return dir;
+        }
+
+        /// <summary>
+        /// Invokes the private LoadMusicMetadata(string dir) method.
+        /// </summary>
+        private static object LoadMusicMetadata(string dir)
+        {
+            var type = typeof(ConvertHelper.ChuniToUgc);
+            var method = type.GetMethod("LoadMusicMetadata",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+            return method.Invoke(null, new object[] { dir });
+        }
+
+        /// <summary>
+        /// Invokes the private WriteUgc(chart, meta, filename) overload.
+        /// </summary>
+        private static string WriteUgcWithMeta(ChartChuni chart, object meta, string filename)
+        {
+            var type = typeof(ConvertHelper.ChuniToUgc);
+            var method = type.GetMethod("WriteUgc",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+            return (string)method.Invoke(null, new object[] { chart, meta, filename });
+        }
+
         /// <summary>
         /// Returns the first non-empty line that immediately follows the given
         /// marker string in the UGC output.
@@ -374,6 +422,29 @@ namespace Scharfrichter.Tests
         }
 
         [Fact]
+        public void BpmReturningToMainIsEmitted()
+        {
+            // BPM 0 0 199 -> BPM 17 192 99.5 -> BPM 21 192 132.669 ->
+            // BPM 25 192 199. The final 199 entry restores the main BPM and
+            // must be emitted even though it equals @MAINBPM, otherwise
+            // UMIGURI would keep the previous 132.669 BPM.
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "BPM\t0\t0\t199.0\n" +
+                "BPM\t17\t192\t99.5\n" +
+                "BPM\t21\t192\t132.669\n" +
+                "BPM\t25\t192\t199.0\n", out ugc);
+
+            // No MET events => every bar is 4/4 (1920 ticks), so the BPM
+            // positions stay on the 384-grid mapping: (17,192)=(17*384+192)*5
+            // = 33600 -> bar 17 tick 960.
+            Assert.Contains("@BPM\t17'960\t99.50000", ugc);
+            Assert.Contains("@BPM\t21'960\t132.66900", ugc);
+            Assert.Contains("@BPM\t25'960\t199.00000", ugc);
+        }
+
+        [Fact]
         public void RendersBeatHeader()
         {
             string ugc;
@@ -381,6 +452,30 @@ namespace Scharfrichter.Tests
                 "RESOLUTION\t384\nMET\t38\t0\t4\t3\n", out ugc);
             Assert.Contains("@BEAT\t0\t4\t4", ugc);
             Assert.Contains("@BEAT\t38\t3\t4", ugc);
+        }
+
+        [Fact]
+        public void LongOpeningMeterUsesChartBeatAndPositionsNotes()
+        {
+            // A chart whose measure 0 is 20/4 must emit a single @BEAT 0 20 4
+            // (not an extra 4/4 at bar 0), and notes on the fixed grid must be
+            // re-mapped onto the accumulated bar layout. MET 0 0 4 20 makes
+            // bar 0 span 5 grid measures (20 beats = 9600 ticks), so a HOLD at
+            // grid measure 17 offset 192 lands on bar 14 tick 0.
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "MET\t0\t0\t4\t20\n" +
+                "MET\t5\t0\t4\t4\n" +
+                "MET\t13\t0\t4\t3\n" +
+                "MET\t15\t96\t4\t4\n" +
+                "MET\t16\t96\t4\t5\n" +
+                "MET\t17\t192\t4\t4\n" +
+                "HLD\t17\t192\t0\t3\t96\n", out ugc);
+
+            Assert.Contains("@BEAT\t0\t20\t4", ugc);
+            Assert.False(ugc.Contains("@BEAT\t0\t4\t4"), "stray 4/4 at bar 0 shifts all boundaries");
+            Assert.Contains("#14'0:h03", ugc);
         }
 
         [Fact]
@@ -492,6 +587,45 @@ namespace Scharfrichter.Tests
         }
 
         [Fact]
+        public void RendersNoteSpeedFromDcm()
+        {
+            // CHUNITHM DCM is a note-speed (追い越し / overtake) event:
+            //   DCM 17 192 3 0.500000
+            //   DCM [Measure] [Offset] [Duration] [Speed]
+            // It is emitted as UGC @SPDMOD (note speed), not @TIL (soflan).
+            //   start  (17, 192) -> 17'960  0.50000
+            //   end    (17, 195) -> 17'975  1.00000
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "DCM\t17\t192\t3\t0.500000\n", out ugc);
+
+            Assert.Contains("@SPDMOD\t17'960\t0.50000", ugc);
+            Assert.Contains("@SPDMOD\t17'975\t1.00000", ugc);
+            Assert.DoesNotContain("@TIL\t0\t17'960", ugc);
+        }
+
+        [Fact]
+        public void ContiguousDcmCollapsesRestore()
+        {
+            // When two DCM segments are contiguous, the 1.0 restore of the
+            // first lands exactly on the second's speed-change position. The
+            // speed change must win over the restore.
+            //   DCM 17 192 96 0.5  -> 17'960 0.5, restore 17'1440 1.0
+            //   DCM 17 288 96 0.25 -> 17'1440 0.25, restore 18'0 1.0
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "DCM\t17\t192\t96\t0.500000\n" +
+                "DCM\t17\t288\t96\t0.250000\n", out ugc);
+
+            Assert.Contains("@SPDMOD\t17'960\t0.50000", ugc);
+            Assert.Contains("@SPDMOD\t17'1440\t0.25000", ugc);
+            Assert.False(ugc.Contains("@SPDMOD\t17'1440\t1.00000"), "restore overwrote contiguous speed change");
+            Assert.Contains("@SPDMOD\t18'0\t1.00000", ugc);
+        }
+
+        [Fact]
         public void RendersAirSlide()
         {
             string ugc;
@@ -573,6 +707,27 @@ namespace Scharfrichter.Tests
         }
 
         [Fact]
+        public void RendersAirCrushColors()
+        {
+            // AIR-CRUSH color tag -> UGC color character correspondence table.
+            // The trailing color column (parts[11]) is mapped by C2UAirCrushColor:
+            //   DEF -> "0" (通常), BLK -> "D" (黒), CYN -> "7" (空), GRY -> "C" (白)
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "ALD\t0\t0\t0\t1\t0\t1.0\t96\t0\t1\t1.0\tCYN\n" +
+                "ALD\t1\t0\t0\t1\t0\t1.0\t96\t0\t1\t1.0\tBLK\n" +
+                "ALD\t2\t0\t0\t1\t0\t1.0\t96\t0\t1\t1.0\tGRY\n" +
+                "ALD\t3\t0\t0\t1\t0\t1.0\t96\t0\t1\t1.0\tDEF\n", out ugc);
+
+            // height 1.0 -> "0F", width 1 -> "1", cell 0 -> "0", interval 0 -> "0"
+            Assert.Contains("#0'0:C010F7,0", ugc);   // CYN -> 7
+            Assert.Contains("#1'0:C010FD,0", ugc);   // BLK -> D
+            Assert.Contains("#2'0:C010FC,0", ugc);   // GRY -> C
+            Assert.Contains("#3'0:C010F0,0", ugc);   // DEF -> 0
+        }
+
+        [Fact]
         public void NoUnwantedCompanionTapForAhd()
         {
             // The AHD's companion CHR must not be emitted as a separate TAP
@@ -585,6 +740,91 @@ namespace Scharfrichter.Tests
 
             Assert.Contains("#7'480:x44U", ugc);   // independent CHR
             Assert.True(ugc.IndexOf("#7'480:t44", StringComparison.Ordinal) < 0, "unwanted companion TAP emitted");
+        }
+
+        [Fact]
+        public void WorldEndFumenSetsWeAttrFromMusicXml()
+        {
+            // SDBT 1.50 identifies the WORLD'S END fumen with type id 5
+            // (<str>WorldsEnd</str> / <data>WORLD'S END</data>). The @DIFF must
+            // become 4, @WEATTR must be filled from worldsEndTagName, and the
+            // play level is the star count from starDifType.
+            string dir = CreateMusicXmlFolder(
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
+                "<MusicData>" +
+                "  <name><id>8314</id><str>sølips</str></name>" +
+                "  <artistName><str>rintaro soma</str></artistName>" +
+                "  <genreNames><list><StringID><str>ゲキマイ</str></StringID></list></genreNames>" +
+                "  <releaseDate>20250716</releaseDate>" +
+                "  <worldsEndTagName><id>27</id><str>蔵</str></worldsEndTagName>" +
+                "  <starDifType>9</starDifType>" +
+                "  <fumens>" +
+                "    <MusicFumenData>" +
+                "      <type><id>5</id><str>WorldsEnd</str><data>WORLD'S END</data></type>" +
+                "      <enable>true</enable>" +
+                "      <file><path>8314_05.c2s</path></file>" +
+                "      <level>0</level>" +
+                "      <levelDecimal>0</levelDecimal>" +
+                "    </MusicFumenData>" +
+                "  </fumens>" +
+                "</MusicData>");
+
+            try
+            {
+                object meta = LoadMusicMetadata(dir);
+                Assert.NotNull(meta);
+
+                ChartChuni chart = ParseChart("RESOLUTION\t384\nTAP\t0\t0\t0\t4\n");
+                string ugc = WriteUgcWithMeta(chart, meta, "8314_05.c2s");
+
+                Assert.Contains("@DIFF\t4", ugc);
+                Assert.Contains("@WEATTR\t蔵", ugc);
+                Assert.Contains("@LEVEL\t5", ugc); // starDifType 9 -> 5 stars
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        [Fact]
+        public void UltimaFumenSetsDiff5WithoutWeAttr()
+        {
+            // CHUNITHM data versions can keep ULTIMA at type id 4; it must be
+            // resolved by the <data>ULTIMA</data> name and must NOT emit @WEATTR.
+            string dir = CreateMusicXmlFolder(
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
+                "<MusicData>" +
+                "  <name><id>8314</id><str>sølips</str></name>" +
+                "  <artistName><str>rintaro soma</str></artistName>" +
+                "  <genreNames><list><StringID><str>ゲキマイ</str></StringID></list></genreNames>" +
+                "  <fumens>" +
+                "    <MusicFumenData>" +
+                "      <type><id>4</id><str>Ultima</str><data>ULTIMA</data></type>" +
+                "      <enable>true</enable>" +
+                "      <file><path>8314_04.c2s</path></file>" +
+                "      <level>14</level>" +
+                "      <levelDecimal>0</levelDecimal>" +
+                "    </MusicFumenData>" +
+                "  </fumens>" +
+                "</MusicData>");
+
+            try
+            {
+                object meta = LoadMusicMetadata(dir);
+                Assert.NotNull(meta);
+
+                ChartChuni chart = ParseChart("RESOLUTION\t384\nTAP\t0\t0\t0\t4\n");
+                string ugc = WriteUgcWithMeta(chart, meta, "8314_04.c2s");
+
+                Assert.Contains("@DIFF\t5", ugc);
+                Assert.DoesNotContain("@WEATTR\t", ugc);
+                Assert.Contains("@LEVEL\t14", ugc);
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
         }
     }
 }

@@ -237,6 +237,13 @@ namespace Scharfrichter.Codec.Charts
                     // change at the start position and a 1.0 restore at the end.
                     AddSpeedChangeTags(parts, state.Chart, state.CurrentMeasure, state.Resolution, measurePosition, notesPosition);
                     break;
+                case "DCM":
+                    // DCM: M O Duration Speed          (note speed change / overtake)
+                    // The speed value is in column 4 and the duration is in column 3.
+                    // AddDcmTags emits a note-speed change at the start position and
+                    // a 1.0 restore at the end.
+                    AddDcmTags(parts, state.Chart, state.CurrentMeasure, state.Resolution, measurePosition, notesPosition);
+                    break;
                 case "STP":
                     AddStopEvent(parts, state.Chart, startLinearOffset);
                     break;
@@ -580,6 +587,26 @@ namespace Scharfrichter.Codec.Charts
             int nextPosition = currentMeasure * resolution + measurePosition + duration - nextMeasure * resolution;
             chart.Tags["TIL00"] += FormatTilingPoint(nextMeasure, nextPosition, resolution) + ":1.0";
             chart.Tags["HISPEED"] = "00";
+        }
+
+        /// <summary>
+        /// Appends SPDMOD tags for a CHUNITHM DCM (note speed / overtake) event.
+        /// Each DCM emits two points (the speed change and a 1.0 restore at its
+        /// end), mirroring AddSpeedChangeTags. The converter later collapses
+        /// duplicate bar'tick positions so a contiguous DCM's speed wins over
+        /// the preceding restore.
+        /// </summary>
+        private static void AddDcmTags(string[] parts, ChartChuni chart, int currentMeasure, int resolution, int measurePosition, int duration)
+        {
+            string spdmod = "";
+            if (chart.Tags.ContainsKey("SPDMOD"))
+                spdmod = chart.Tags["SPDMOD"] + ", ";
+
+            chart.Tags["SPDMOD"] = spdmod + FormatTilingPoint(currentMeasure, measurePosition, resolution) + ":" + double.Parse(parts[4]) + ", ";
+
+            int nextMeasure = (int)Math.Floor(((double)currentMeasure * resolution + measurePosition + duration) / resolution);
+            int nextPosition = currentMeasure * resolution + measurePosition + duration - nextMeasure * resolution;
+            chart.Tags["SPDMOD"] += FormatTilingPoint(nextMeasure, nextPosition, resolution) + ":1.0";
         }
 
         /// <summary>

@@ -83,21 +83,45 @@ namespace ConvertHelper
         private const int AirCrushIntervalAutoThreshold = 9600; // 25 measures * 384
 
         /// <summary>
-        /// Tick length of each UMIGURI measure, built from the CHUNITHM MET
-        /// events (4/4 = 1920, 3/4 = 1440, ...). Used to convert fixed-grid
-        /// note positions into @BEAT-consistent Bar'Tick positions.
+        /// The UMIGURI bar layout (bar number, start tick, length and meter),
+        /// built from the CHUNITHM MET events. Used to convert fixed-grid note
+        /// positions into @BEAT-consistent Bar'Tick positions.
         /// </summary>
-        private static Dictionary<int, int> currentMeasureTicks = new Dictionary<int, int>();
+        private static List<BarInfo> currentBars = new List<BarInfo>();
 
-        private static readonly Dictionary<string, int> DifficultyMap = new Dictionary<string, int>
+        /// <summary>
+        /// Resolves the UMIGURI v8 DIFF number (0..5) from the CHUNITHM
+        /// Music.xml fumen type name/data, rather than relying on a numeric
+        /// type id. The WorldsEnd fumen id differs between CHUNITHM versions
+        /// (older builds used id 4, current builds use id 5), but Music.xml
+        /// always identifies each chart by its <str>/<data> name.
+        /// </summary>
+        private static string ResolveUgriDifficulty(string typeData, string typeStr)
         {
-            { "0", 0 },  // BASIC
-            { "1", 1 },  // ADVANCED
-            { "2", 2 },  // EXPERT
-            { "3", 3 },  // MASTER
-            { "4", 4 },  // WORLD'S END
-            { "5", 5 },  // ULTIMA
-        };
+            string key = (typeData ?? "").Trim();
+            switch (key)
+            {
+                case "BASIC": return "0";
+                case "ADVANCED": return "1";
+                case "EXPERT": return "2";
+                case "MASTER": return "3";
+                case "WORLD'S END": return "4";
+                case "ULTIMA": return "5";
+            }
+
+            key = (typeStr ?? "").Trim();
+            switch (key)
+            {
+                case "Basic": return "0";
+                case "Advanced": return "1";
+                case "Expert": return "2";
+                case "Master": return "3";
+                case "WorldsEnd": return "4";
+                case "Ultima": return "5";
+            }
+
+            return null;
+        }
 
         /// <summary>A pre-rendered UGC output unit, sorted by time and priority.</summary>
         private sealed class NoteUnit
@@ -290,14 +314,29 @@ namespace ConvertHelper
                         continue;
 
                     string id = row.Element("type").Element("id").Value;
+                    string typeStr = row.Element("type").Element("str").Value;
+                    string typeData = row.Element("type").Element("data").Value;
+
+                    // Determine WORLD'S END from Music.xml itself (the fumen
+                    // type name / data) instead of relying on a hardcoded
+                    // numeric type id. The WorldsEnd fumen id differs between
+                    // CHUNITHM data versions (older builds used id 4, current
+                    // builds use id 5), but Music.xml always identifies it via
+                    // <str>WorldsEnd</str> / <data>WORLD'S END</data>.
+                    bool isWorldsEnd =
+                        string.Equals(typeStr, "WorldsEnd", StringComparison.Ordinal) ||
+                        string.Equals(typeData, "WORLD'S END", StringComparison.Ordinal);
+
                     MusicChartMeta chartMeta = new MusicChartMeta();
                     chartMeta.TypeId = id;
-                    chartMeta.TypeName = row.Element("type").Element("data").Value;
+                    chartMeta.TypeName = typeData;
+                    chartMeta.IsWorldsEnd = isWorldsEnd;
+                    chartMeta.Difficulty = ResolveUgriDifficulty(typeData, typeStr);
                     chartMeta.Level = row.Element("levelDecimal").Value != null
                         ? (row.Element("level").Value + (int.Parse(row.Element("levelDecimal").Value) >= 50 ? "+" : ""))
                         : row.Element("level").Value;
 
-                    if (id == "4")
+                    if (isWorldsEnd)
                     {
                         chartMeta.WeAttr = xml.Element("worldsEndTagName")?.Element("str")?.Value ?? "";
                         string star = "";
@@ -331,7 +370,7 @@ namespace ConvertHelper
                 if (meta.Charts.ContainsKey(name))
                     return meta.Charts[name];
             }
-            return new MusicChartMeta { TypeId = "0", TypeName = "BASIC", Level = "1" };
+            return new MusicChartMeta { TypeId = "0", TypeName = "BASIC", Level = "1", Difficulty = "0" };
         }
 
         private static string BuildOutputPath(ChartChuni chart, string filename, MusicMetadata meta)
@@ -362,7 +401,7 @@ namespace ConvertHelper
 
             // Build the @BEAT-aware measure lengths first so the header
             // (BPM / SPDMOD) and every note line can re-map onto them.
-            BuildMeasureTicks(chart);
+            BuildBars(chart);
 
             WriteHeader(sb, chart, meta, chartMeta);
             WriteNotes(sb, chart);
@@ -400,14 +439,14 @@ namespace ConvertHelper
                 sb.AppendLine("@DESIGN\t" + chart.Tags["DESIGNER"]);
 
             // Difficulty
-            if (!string.IsNullOrEmpty(chartMeta.TypeId) && DifficultyMap.ContainsKey(chartMeta.TypeId))
-                sb.AppendLine("@DIFF\t" + DifficultyMap[chartMeta.TypeId]);
+            if (!string.IsNullOrEmpty(chartMeta.Difficulty))
+                sb.AppendLine("@DIFF\t" + chartMeta.Difficulty);
             else
                 sb.AppendLine("@DIFF\t0");
 
             sb.AppendLine("@LEVEL\t" + (chartMeta.Level ?? "1"));
 
-            if (chartMeta.TypeId == "4" && !string.IsNullOrEmpty(chartMeta.WeAttr))
+            if (chartMeta.IsWorldsEnd && !string.IsNullOrEmpty(chartMeta.WeAttr))
                 sb.AppendLine("@WEATTR\t" + chartMeta.WeAttr);
 
             sb.AppendLine("@CONST\t0.00000");
@@ -458,6 +497,9 @@ namespace ConvertHelper
             // Speed changes from CHUNITHM SFL events.
             WriteTimelineHeader(sb, chart);
 
+            // Note speed changes from CHUNITHM DCM (overtake) events.
+            WriteSpdModHeader(sb, chart);
+
             sb.AppendLine("@MAINBPM\t" + mainBpm.ToString("F5"));
             sb.AppendLine("@MAINTIL\t0");
             sb.AppendLine("@ENDHEAD");
@@ -474,6 +516,16 @@ namespace ConvertHelper
         {
             public int Measure;
             public int Position;   // 0..383 within the measure
+            public int Numerator;
+            public int Denominator;
+        }
+
+        /// <summary>One UMIGURI bar: its number, absolute start tick, length and meter.</summary>
+        private sealed class BarInfo
+        {
+            public int Bar;
+            public int StartAbs;
+            public int Length;
             public int Numerator;
             public int Denominator;
         }
@@ -515,32 +567,26 @@ namespace ConvertHelper
         }
 
         /// <summary>
-        /// Writes @BEAT definitions. Always emits the initial 4/4 at measure 0,
-        /// then one @BEAT per measure using the LAST MET in that measure.
-        /// Multiple METs in one measure (CHUNITHM tuplets) cannot be expressed
-        /// as per-measure @BEAT changes in UMIGURI, so the measure length is
-        /// determined by its final meter.
-        /// ChuniPC stores a MET as an EntryTypeChuni.Event whose Value is
-        /// Fraction(numerator, denominator); MET 38 0 4 3 becomes
-        /// @BEAT 38 3 4.
+        /// Writes @BEAT definitions from the UMIGURI bar layout produced by
+        /// BuildBars. Bar 0 is always emitted using the chart's own meter
+        /// (e.g. MET 0 0 4 20 => @BEAT 0 20 4); each subsequent bar emits an
+        /// @BEAT only when its meter differs from the previous bar. This keeps
+        /// the bar numbering consistent with the note positions and avoids a
+        /// stray 4/4 @BEAT at bar 0 that would shift every later boundary.
         /// </summary>
         private static void WriteBeatHeader(StringBuilder sb, ChartChuni chart)
         {
-            sb.AppendLine("@BEAT\t0\t4\t4");
+            List<BarInfo> bars = BuildBars(chart);
 
-            List<MetInfo> mets = CollectMets(chart);
-            Dictionary<int, MetInfo> lastByMeasure = new Dictionary<int, MetInfo>();
-            foreach (MetInfo met in mets)
-                lastByMeasure[met.Measure] = met; // sorted by position, so the last one wins
-
-            List<int> measures = new List<int>(lastByMeasure.Keys);
-            measures.Sort();
-            foreach (int measure in measures)
+            int prevNumerator = int.MinValue;
+            int prevDenominator = int.MinValue;
+            foreach (BarInfo barInfo in bars)
             {
-                MetInfo met = lastByMeasure[measure];
-                if (measure == 0 && met.Numerator == 4 && met.Denominator == 4)
-                    continue;
-                sb.AppendLine("@BEAT\t" + met.Measure + "\t" + met.Numerator + "\t" + met.Denominator);
+                if (barInfo.Numerator == prevNumerator && barInfo.Denominator == prevDenominator)
+                    continue; // unchanged meter: UMIGURI carries it forward
+                sb.AppendLine("@BEAT\t" + barInfo.Bar + "\t" + barInfo.Numerator + "\t" + barInfo.Denominator);
+                prevNumerator = barInfo.Numerator;
+                prevDenominator = barInfo.Denominator;
             }
         }
 
@@ -626,6 +672,86 @@ namespace ConvertHelper
         }
 
         /// <summary>
+        /// Writes @SPDMOD (note speed) definitions from CHUNITHM DCM (overtake)
+        /// events. ChuniPC stores these in chart.Tags["SPDMOD"] as
+        /// "bar'tick:speed, bar'tick:speed, ...".
+        ///
+        /// UMIGURI v8 distinguishes the two speed concepts:
+        ///   @SPDMOD note speed definition:         BarTick Speed
+        ///   @TIL    timeline definition (soflan):  TimelineId BarTick Speed
+        /// CHUNITHM DCM changes the note approach speed (追い越し / overtake),
+        /// so it maps to @SPDMOD, while SFL/SLP scroll the whole field and are
+        /// emitted as @TIL entries.
+        ///
+        /// Each DCM emits two points (the speed change and the 1.0 restore);
+        /// duplicate bar'tick positions are collapsed so a contiguous DCM's
+        /// speed wins over the preceding restore.
+        /// </summary>
+        private static void WriteSpdModHeader(StringBuilder sb, ChartChuni chart)
+        {
+            if (chart.Tags.ContainsKey("SPDMOD") && !string.IsNullOrEmpty(chart.Tags["SPDMOD"]))
+            {
+                string spdmod = chart.Tags["SPDMOD"].Trim();
+                string[] points = spdmod.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                if (points.Length > 0)
+                {
+                    List<string> converted = new List<string>();
+                    foreach (string point in points)
+                    {
+                        string trimmed = point.Trim();
+                        // "bar'tick:speed"
+                        int colonIdx = trimmed.LastIndexOf(':');
+                        if (colonIdx <= 0)
+                            continue;
+                        string barTickPart = trimmed.Substring(0, colonIdx);
+                        string speedPart = trimmed.Substring(colonIdx + 1);
+                        double speed;
+                        if (!double.TryParse(speedPart, NumberStyles.Float, CultureInfo.InvariantCulture, out speed))
+                            continue;
+
+                        int quoteIdx = barTickPart.IndexOf('\'');
+                        int bar, tick;
+                        if (quoteIdx > 0 && int.TryParse(barTickPart.Substring(0, quoteIdx), out bar) && int.TryParse(barTickPart.Substring(quoteIdx + 1), out tick))
+                        {
+                            // The DCM bar'tick is on the CHUNITHM fixed grid;
+                            // re-map through the MET-aware measure lengths so
+                            // the @SPDMOD point aligns with the @BEAT layout.
+                            int abs = bar * StandardTicksPerMeasure + tick;
+                            int outBar, outTick;
+                            ConvertToUmiguriBarTick(abs, out outBar, out outTick);
+                            converted.Add(outBar + "'" + outTick + "\t" + speed.ToString("F5", CultureInfo.InvariantCulture));
+                        }
+                    }
+
+                    // Deduplicate by bar'tick. Each DCM emits two points: the
+                    // speed change at its start and a 1.0 restore at its end.
+                    // For contiguous DCM segments the restore lands exactly on
+                    // the next DCM's speed-change position. Keep the LAST
+                    // occurrence of each bar'tick while preserving time order so
+                    // a speed change wins over the 1.0 restore.
+                    Dictionary<string, int> indexByKey = new Dictionary<string, int>();
+                    List<string> unique = new List<string>();
+                    foreach (string entry in converted)
+                    {
+                        string key = entry.Substring(0, entry.IndexOf('\t'));
+                        int existingIndex;
+                        if (indexByKey.TryGetValue(key, out existingIndex))
+                        {
+                            unique[existingIndex] = entry; // last occurrence wins
+                        }
+                        else
+                        {
+                            indexByKey[key] = unique.Count;
+                            unique.Add(entry);
+                        }
+                    }
+                    foreach (string entry in unique)
+                        sb.AppendLine("@SPDMOD\t" + entry);
+                }
+            }
+        }
+
+        /// <summary>
         /// Writes @BPM header entries for tempo changes.
         /// </summary>
         private static void WriteBpmHeader(StringBuilder sb, ChartChuni chart, double mainBpm)
@@ -653,10 +779,19 @@ namespace ConvertHelper
                 return tickA.CompareTo(tickB);
             });
 
+            // Emit every BPM point whose value differs from the value currently
+            // in effect. A point that returns to the main BPM (e.g. a 199 BPM
+            // entry after a 132.669 section) must still be emitted, otherwise
+            // UMIGURI would keep the previous non-main BPM.
+            double previousBpm = mainBpm;
             foreach (TempoChange change in changes)
             {
-                if (change.BarTick != "0'0" && Math.Abs(change.Bpm - mainBpm) > 0.001)
-                    sb.AppendLine("@BPM\t" + change.BarTick + "\t" + change.Bpm.ToString("F5"));
+                if (change.BarTick == "0'0")
+                    continue;
+                if (Math.Abs(change.Bpm - previousBpm) <= 0.001)
+                    continue;
+                sb.AppendLine("@BPM\t" + change.BarTick + "\t" + change.Bpm.ToString("F5"));
+                previousBpm = change.Bpm;
             }
         }
 
@@ -667,75 +802,162 @@ namespace ConvertHelper
         }
 
         /// <summary>
-        /// Builds the tick length of every UMIGURI measure from the CHUNITHM
-        /// MET events. Default 4/4 = 1920 ticks; a MET at measure M switches
-        /// the length from M onward (e.g. 3/4 => 1440 ticks, 4/4 => 1920 ticks).
+        /// Collapses the raw MET events into one meter change per CHUNITHM grid
+        /// measure. When a measure contains several METs (Arcahv-style tuplet
+        /// runs), only the last meter is kept and it is anchored to the measure
+        /// start, since UMIGURI @BEAT cannot express sub-measure meter changes.
+        /// Single MET events keep their exact position (e.g. MET 15 96 4 4
+        /// starts a new bar at grid position 96 of measure 15).
         /// </summary>
-        private static Dictionary<int, int> BuildMeasureTicks(ChartChuni chart)
+        private static List<MetInfo> CollapseMets(List<MetInfo> mets)
         {
-            Dictionary<int, int> ticks = new Dictionary<int, int>();
-            currentMeasureTicks = ticks;
-
-            List<MetInfo> mets = CollectMets(chart);
-
-            int lastMeasure = 0;
-            foreach (EntryChuni entry in chart.Entries)
-            {
-                if (entry.MetricMeasure > lastMeasure)
-                    lastMeasure = entry.MetricMeasure;
-            }
+            Dictionary<int, List<MetInfo>> byMeasure = new Dictionary<int, List<MetInfo>>();
             foreach (MetInfo met in mets)
             {
-                if (met.Measure > lastMeasure)
-                    lastMeasure = met.Measure;
+                List<MetInfo> list;
+                if (!byMeasure.TryGetValue(met.Measure, out list))
+                {
+                    list = new List<MetInfo>();
+                    byMeasure[met.Measure] = list;
+                }
+                list.Add(met);
             }
 
-            int idx = 0;
-            int currentLen = StandardTicksPerMeasure;
-            for (int m = 0; m <= lastMeasure + 10; m++)
+            List<MetInfo> collapsed = new List<MetInfo>();
+            foreach (List<MetInfo> list in byMeasure.Values)
             {
-                // When multiple METs (tuplets) exist in the same measure, the
-                // last MET determines the measure length (UMIGURI @BEAT is
-                // effective per measure).
-                // Example: Arcahv measure 2's MET group (1/384, 1/192, 1/128,
-                // 1/96, 64/64): the last 64/64 (= 4/4) makes measure 2 1920
-                // ticks long.
-                while (idx < mets.Count && mets[idx].Measure == m)
-                {
-                    int length = TicksPerBeat * DefaultBeatsPerMeasure * mets[idx].Numerator / mets[idx].Denominator;
-                    if (length > 0)
-                        currentLen = length;
-                    idx++;
-                }
-                ticks[m] = currentLen;
+                list.Sort((a, b) => a.Position.CompareTo(b.Position));
+                MetInfo last = list[list.Count - 1];
+                if (list.Count > 1)
+                    last.Position = 0; // tuplets: meter applies at the measure boundary
+                collapsed.Add(last);
             }
-            return ticks;
+            collapsed.Sort((a, b) =>
+            {
+                int cmp = a.Measure.CompareTo(b.Measure);
+                if (cmp != 0) return cmp;
+                return a.Position.CompareTo(b.Position);
+            });
+            return collapsed;
+        }
+
+        /// <summary>
+        /// Returns the absolute UMIGURI tick of a MET event (CHUNITHM 384 grid
+        /// scaled by StandardTicksPerMeasure/384 = 5).
+        /// </summary>
+        private static int MetAbs(MetInfo met)
+        {
+            return (met.Measure * 384 + met.Position) * (StandardTicksPerMeasure / 384);
+        }
+
+        /// <summary>
+        /// Builds the UMIGURI bar layout from the CHUNITHM MET events. Meter
+        /// changes are applied at their exact grid positions, so a long opening
+        /// measure (e.g. MET 0 0 4 20 = 20/4) spans the correct number of
+        /// UMIGURI ticks rather than being treated as one bar per grid measure.
+        /// Tuplet MET runs within a single grid measure collapse to one meter
+        /// change at the measure start.
+        /// </summary>
+        private static List<BarInfo> BuildBars(ChartChuni chart)
+        {
+            List<MetInfo> collapsed = CollapseMets(CollectMets(chart));
+
+            int lastAbs = 0;
+            foreach (EntryChuni entry in chart.Entries)
+            {
+                int abs = ToAbsoluteTick(entry);
+                if (abs > lastAbs)
+                    lastAbs = abs;
+            }
+            foreach (MetInfo met in collapsed)
+            {
+                int abs = MetAbs(met);
+                if (abs > lastAbs)
+                    lastAbs = abs;
+            }
+            int maxAbs = lastAbs + StandardTicksPerMeasure * 20;
+
+            List<BarInfo> bars = new List<BarInfo>();
+            int bar = 0;
+            int startAbs = 0;
+            int numerator = DefaultBeatsPerMeasure;
+            int denominator = DefaultBeatsPerMeasure;
+            int metIdx = 0;
+
+            // A MET exactly at tick 0 replaces the default 4/4 meter for bar 0.
+            while (metIdx < collapsed.Count && MetAbs(collapsed[metIdx]) == startAbs)
+            {
+                numerator = collapsed[metIdx].Numerator;
+                denominator = collapsed[metIdx].Denominator;
+                metIdx++;
+            }
+
+            while (startAbs < maxAbs)
+            {
+                int length = StandardTicksPerMeasure * numerator / denominator;
+                if (length <= 0)
+                    length = StandardTicksPerMeasure;
+
+                int endAbs = startAbs + length;
+
+                if (metIdx < collapsed.Count)
+                {
+                    int nextMetAbs = MetAbs(collapsed[metIdx]);
+                    if (nextMetAbs <= startAbs)
+                    {
+                        numerator = collapsed[metIdx].Numerator;
+                        denominator = collapsed[metIdx].Denominator;
+                        metIdx++;
+                        continue;
+                    }
+                    if (nextMetAbs < endAbs)
+                        endAbs = nextMetAbs;
+                }
+
+                bars.Add(new BarInfo
+                {
+                    Bar = bar,
+                    StartAbs = startAbs,
+                    Length = endAbs - startAbs,
+                    Numerator = numerator,
+                    Denominator = denominator
+                });
+                bar++;
+                startAbs = endAbs;
+
+                while (metIdx < collapsed.Count && MetAbs(collapsed[metIdx]) == startAbs)
+                {
+                    numerator = collapsed[metIdx].Numerator;
+                    denominator = collapsed[metIdx].Denominator;
+                    metIdx++;
+                }
+            }
+
+            currentBars = bars;
+            return bars;
         }
 
         /// <summary>
         /// Converts an absolute tick on the fixed 1920 grid (CHUNITHM) into a
-        /// Bar'Tick position on the @BEAT-aware UMIGURI measure layout. The
-        /// absolute tick count is preserved, so real time stays identical;
-        /// only the measure boundaries follow the MET changes.
+        /// Bar'Tick position on the @BEAT-aware UMIGURI bar layout.
         /// </summary>
         private static void ConvertToUmiguriBarTick(int chuniAbsTick, out int bar, out int tick)
         {
-            int m = 0;
-            int remaining = chuniAbsTick;
-            while (true)
+            foreach (BarInfo barInfo in currentBars)
             {
-                int len;
-                if (!currentMeasureTicks.TryGetValue(m, out len))
-                    len = StandardTicksPerMeasure;
-                if (remaining < len)
+                if (chuniAbsTick < barInfo.StartAbs + barInfo.Length)
                 {
-                    bar = m;
-                    tick = remaining;
+                    bar = barInfo.Bar;
+                    tick = chuniAbsTick - barInfo.StartAbs;
                     return;
                 }
-                remaining -= len;
-                m++;
             }
+
+            // Fallback: assume 4/4 bars continue past the last known bar.
+            BarInfo last = currentBars[currentBars.Count - 1];
+            int overflow = chuniAbsTick - (last.StartAbs + last.Length);
+            bar = last.Bar + 1 + overflow / StandardTicksPerMeasure;
+            tick = overflow % StandardTicksPerMeasure;
         }
 
         /// <summary>
@@ -1853,28 +2075,25 @@ namespace ConvertHelper
         }
 
         /// <summary>
-        /// Converts a metric entry to the tick within its measure (0 .. 1919).
-        /// </summary>
-        private static int ToMeasureTick(EntryChuni entry)
-        {
-            return (int)((double)entry.MetricOffset * StandardTicksPerMeasure);
-        }
-
-        /// <summary>
-        /// Converts a metric entry to an absolute tick count from the start.
+        /// Converts an entry's CHUNITHM linear offset (384 grid) to the UMIGURI
+        /// absolute tick (1920 per 4/4 bar). LinearOffset is the pure chart grid
+        /// and is independent of BPM, so this preserves real timing even when a
+        /// tempo change shares the same position as a note (e.g. HXD 17 192 next
+        /// to BPM 17 192). Using MetricMeasure/MetricOffset here would distort
+        /// the position because ChuniPC's metric offsets are tempo-scaled.
         /// </summary>
         private static int ToAbsoluteTick(EntryChuni entry)
         {
-            return entry.MetricMeasure * StandardTicksPerMeasure + ToMeasureTick(entry);
+            return (int)Math.Round((double)entry.LinearOffset * StandardTicksPerMeasure / 384.0);
         }
 
         /// <summary>
-        /// Formats a Bar'Tick string for an entry's metric position, re-mapped
-        /// onto the @BEAT-aware measure layout.
+        /// Formats a Bar'Tick string for an entry, re-mapped onto the
+        /// @BEAT-aware measure layout.
         /// </summary>
         private static string FormatBarTick(EntryChuni entry)
         {
-            int abs = entry.MetricMeasure * StandardTicksPerMeasure + ToMeasureTick(entry);
+            int abs = ToAbsoluteTick(entry);
             int bar, tick;
             ConvertToUmiguriBarTick(abs, out bar, out tick);
             return bar.ToString() + "'" + tick.ToString();
@@ -1886,7 +2105,7 @@ namespace ConvertHelper
         /// </summary>
         private static void AppendBarTick(StringBuilder sb, EntryChuni entry)
         {
-            int abs = entry.MetricMeasure * StandardTicksPerMeasure + ToMeasureTick(entry);
+            int abs = ToAbsoluteTick(entry);
             int bar, tick;
             ConvertToUmiguriBarTick(abs, out bar, out tick);
             sb.Append("#" + bar.ToString() + "'" + tick.ToString());
@@ -1945,6 +2164,8 @@ namespace ConvertHelper
             public string TypeName;
             public string Level;
             public string WeAttr;
+            public bool IsWorldsEnd;
+            public string Difficulty;
         }
     }
 }

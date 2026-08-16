@@ -72,8 +72,8 @@ namespace ConvertHelper
         {
             { "DEF", "0" }, { "NON", "Z" }, { "RED", "1" }, { "ORN", "2" },
             { "YEL", "3" }, { "LIM", "4" }, { "GRN", "5" }, { "AQA", "6" },
-            { "CYN", "7" }, { "DGR", "8" }, { "BLU", "9" }, { "VLT", "A" },
-            { "PPL", "Y" }, { "PNK", "B" }, { "GRY", "C" }, { "BLK", "D" },
+            { "CYN", "7" }, { "DGR", "8" }, { "BLU", "9" }, { "VLT", "B" },
+            { "PPL", "A" }, { "PNK", "Y" }, { "GRY", "C" }, { "BLK", "D" },
         };
 
         /// <summary>
@@ -133,6 +133,7 @@ namespace ConvertHelper
             public EntryChuni Entry; // source entry (for companion grouping)
             public int StartAbs;    // absolute tick of the unit start
             public int EndAbs;      // absolute tick of the unit end
+            public int Timeline;    // UGC @USETIL timeline id for this unit (default 0)
 
             /// <summary>
             /// All lanes touched by a SLIDE chain (start, intermediate and end
@@ -373,6 +374,25 @@ namespace ConvertHelper
             return new MusicChartMeta { TypeId = "0", TypeName = "BASIC", Level = "1", Difficulty = "0" };
         }
 
+        /// <summary>
+        /// Builds the per-chart file label used in the output filename. For
+        /// WORLD'S END charts this is "WEATTR☆☆...☆" (the attribute followed
+        /// by one star per level), so several WORLD'S END charts of the same
+        /// song remain distinguishable (e.g. "蔵☆☆☆☆☆"). Other difficulties
+        /// keep their Music.xml type name (e.g. "MASTER", "ULTIMA").
+        /// </summary>
+        private static string BuildChartFileLabel(MusicChartMeta chartMeta)
+        {
+            if (chartMeta != null && chartMeta.IsWorldsEnd)
+            {
+                string attr = chartMeta.WeAttr ?? "";
+                int stars;
+                if (!string.IsNullOrEmpty(attr) && int.TryParse(chartMeta.Level, out stars) && stars > 0)
+                    return attr + new string('☆', stars);
+            }
+            return chartMeta != null ? chartMeta.TypeName : "BASIC";
+        }
+
         private static string BuildOutputPath(ChartChuni chart, string filename, MusicMetadata meta)
         {
             // Output to the [CHUNI] OUTPUT folder, or [BMS] OUTPUT as fallback.
@@ -390,7 +410,7 @@ namespace ConvertHelper
             Common.SafeCreateDirectory(dirPath);
 
             MusicChartMeta chartMeta = ResolveChartMeta(Path.GetFileName(filename), meta);
-            string outName = name + "(" + chartMeta.TypeName + ")";
+            string outName = name + "(" + BuildChartFileLabel(chartMeta) + ")";
             return Path.Combine(dirPath, outName + ".ugc");
         }
 
@@ -607,68 +627,90 @@ namespace ConvertHelper
         /// </summary>
         private static void WriteTimelineHeader(StringBuilder sb, ChartChuni chart)
         {
-            if (chart.Tags.ContainsKey("TIL00") && !string.IsNullOrEmpty(chart.Tags["TIL00"]))
+            // ChuniPC stores each soflan timeline in a separate tag: TIL00 is
+            // SFL (the default timeline 0), TIL<id> is SLP's explicit timeline
+            // id. Emit @TIL definitions for every one so @USETIL can switch.
+            List<int> timelineIds = new List<int>();
+            foreach (string key in chart.Tags.Keys)
             {
-                string til = chart.Tags["TIL00"].Trim();
-                string[] points = til.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-                if (points.Length > 0)
+                if (key.StartsWith("TIL", StringComparison.Ordinal))
                 {
-                    List<string> converted = new List<string>();
-                    foreach (string point in points)
-                    {
-                        string trimmed = point.Trim();
-                        // "bar'tick:speed"
-                        int colonIdx = trimmed.LastIndexOf(':');
-                        if (colonIdx <= 0)
-                            continue;
-                        string barTickPart = trimmed.Substring(0, colonIdx);
-                        string speedPart = trimmed.Substring(colonIdx + 1);
-                        double speed;
-                        if (!double.TryParse(speedPart, NumberStyles.Float, CultureInfo.InvariantCulture, out speed))
-                            continue;
-
-                        int quoteIdx = barTickPart.IndexOf('\'');
-                        int bar, tick;
-                        if (quoteIdx > 0 && int.TryParse(barTickPart.Substring(0, quoteIdx), out bar) && int.TryParse(barTickPart.Substring(quoteIdx + 1), out tick))
-                        {
-                            // The SFL bar'tick is on the CHUNITHM fixed grid;
-                            // re-map through the MET-aware measure lengths so
-                            // the @TIL point aligns with the @BEAT layout.
-                            int abs = bar * StandardTicksPerMeasure + tick;
-                            int outBar, outTick;
-                            ConvertToUmiguriBarTick(abs, out outBar, out outTick);
-                            converted.Add(outBar + "'" + outTick + "\t" + speed.ToString("F5", CultureInfo.InvariantCulture));
-                        }
-                    }
-
-                    // Deduplicate by bar'tick. Each SFL emits two points: the
-                    // speed change at its start and a 1.0 restore at its end.
-                    // For contiguous SFL segments the restore lands exactly on
-                    // the next SFL's speed-change position. The accumulated
-                    // TIL00 order is [restore, change] at that position, so the
-                    // speed change must win over the 1.0 restore. Keep the LAST
-                    // occurrence of each bar'tick while preserving the time order.
-                    Dictionary<string, int> indexByKey = new Dictionary<string, int>();
-                    List<string> unique = new List<string>();
-                    foreach (string entry in converted)
-                    {
-                        string key = entry.Substring(0, entry.IndexOf('\t'));
-                        int existingIndex;
-                        if (indexByKey.TryGetValue(key, out existingIndex))
-                        {
-                            unique[existingIndex] = entry; // last occurrence wins
-                        }
-                        else
-                        {
-                            indexByKey[key] = unique.Count;
-                            unique.Add(entry);
-                        }
-                    }
-                    // Timeline 0 is the base timeline referenced by @MAINTIL 0.
-                    foreach (string entry in unique)
-                        sb.AppendLine("@TIL\t0\t" + entry);
+                    int id;
+                    if (int.TryParse(key.Substring(3), out id))
+                        timelineIds.Add(id);
                 }
             }
+            timelineIds.Sort();
+
+            foreach (int timelineId in timelineIds)
+                WriteTimelineForId(sb, chart, timelineId);
+        }
+
+        /// <summary>
+        /// Writes @TIL definitions for one timeline id from chart.Tags["TIL<id>"].
+        /// </summary>
+        private static void WriteTimelineForId(StringBuilder sb, ChartChuni chart, int timelineId)
+        {
+            string key = "TIL" + timelineId.ToString();
+            string til;
+            if (!chart.Tags.TryGetValue(key, out til) || string.IsNullOrEmpty(til))
+                return;
+
+            string[] points = til.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (points.Length == 0)
+                return;
+
+            List<string> converted = new List<string>();
+            foreach (string point in points)
+            {
+                string trimmed = point.Trim();
+                // "bar'tick:speed"
+                int colonIdx = trimmed.LastIndexOf(':');
+                if (colonIdx <= 0)
+                    continue;
+                string barTickPart = trimmed.Substring(0, colonIdx);
+                string speedPart = trimmed.Substring(colonIdx + 1);
+                double speed;
+                if (!double.TryParse(speedPart, NumberStyles.Float, CultureInfo.InvariantCulture, out speed))
+                    continue;
+
+                int quoteIdx = barTickPart.IndexOf('\'');
+                int bar, tick;
+                if (quoteIdx > 0 && int.TryParse(barTickPart.Substring(0, quoteIdx), out bar) && int.TryParse(barTickPart.Substring(quoteIdx + 1), out tick))
+                {
+                    // The bar'tick is on the CHUNITHM fixed grid; re-map
+                    // through the MET-aware measure lengths so the @TIL point
+                    // aligns with the @BEAT layout.
+                    int abs = bar * StandardTicksPerMeasure + tick;
+                    int outBar, outTick;
+                    ConvertToUmiguriBarTick(abs, out outBar, out outTick);
+                    converted.Add(outBar + "'" + outTick + "\t" + speed.ToString("F5", CultureInfo.InvariantCulture));
+                }
+            }
+
+            // Deduplicate by bar'tick. Each SFL/SLP emits two points: the
+            // speed change at its start and a 1.0 restore at its end. For
+            // contiguous segments the restore lands exactly on the next
+            // segment's speed-change position. Keep the LAST occurrence so a
+            // speed change wins over the 1.0 restore.
+            Dictionary<string, int> indexByKey = new Dictionary<string, int>();
+            List<string> unique = new List<string>();
+            foreach (string entry in converted)
+            {
+                string k = entry.Substring(0, entry.IndexOf('\t'));
+                int existingIndex;
+                if (indexByKey.TryGetValue(k, out existingIndex))
+                {
+                    unique[existingIndex] = entry;
+                }
+                else
+                {
+                    indexByKey[k] = unique.Count;
+                    unique.Add(entry);
+                }
+            }
+            foreach (string entry in unique)
+                sb.AppendLine("@TIL\t" + timelineId.ToString() + "\t" + entry);
         }
 
         /// <summary>
@@ -975,6 +1017,12 @@ namespace ConvertHelper
 
             units.Sort(CompareUnit);
 
+            // SLA regions assign timeline ids to notes in their lane/time span.
+            List<UgcSlaRegion> regions = ParseSlaRegions(chart);
+            foreach (NoteUnit unit in units)
+                unit.Timeline = unit.Entry != null ? ResolveTimeline(unit.Entry, regions) : 0;
+            int currentTimeline = 0;
+
             // All AIR (Player 5), AIR-HOLD (Player 4) and AIR-SLIDE (Player 6)
             // units are pulled out into the companion list; they are flushed
             // right after their connected ground unit so UMIGURI can resolve
@@ -1011,35 +1059,35 @@ namespace ConvertHelper
                     string parentLine = unit.Text.Substring(0, unit.Text.IndexOf('\n', StringComparison.Ordinal)).TrimEnd('\r');
                     if (parentLine.Length == 0)
                         parentLine = unit.Text;
-                    sb.AppendLine(parentLine);
+                    AppendNoteLine(sb, parentLine, unit.Timeline, ref currentTimeline);
 
                     // After the chain parent, emit AIR-SLIDE companions that
                     // attach to the chain start (TargetNote = SLD/SLC).
                     // AHD / AIR notes are still placed by the per-segment
                     // EmitCompanionAirsAt logic below.
                     if (unit.Entry != null)
-                        EmitAirSlidesAtStart(sb, companionAirs, unit);
+                        EmitAirSlidesAtStart(sb, companionAirs, unit, ref currentTimeline);
 
                     // Then each segment line + companions matching its end.
                     for (int s = 0; s < unit.ChainSegmentLines.Count; s++)
                     {
-                        sb.AppendLine(unit.ChainSegmentLines[s]);
+                        AppendNoteLine(sb, unit.ChainSegmentLines[s], unit.Timeline, ref currentTimeline);
                         if (unit.Entry != null && unit.ChainSegmentEnds != null && s < unit.ChainSegmentEnds.Length)
                         {
                             // ChainSegmentLines[s] is the segment ending at
                             // chain entry s+1, so its end column is the
                             // (s+1)-th entry of ChainColumns.
                             int endColumn = (unit.ChainColumns != null && s + 1 < unit.ChainColumns.Length) ? unit.ChainColumns[s + 1] : -1;
-                            EmitCompanionAirsAt(sb, companionAirs, unit, unit.ChainSegmentEnds[s], endColumn);
+                            EmitCompanionAirsAt(sb, companionAirs, unit, unit.ChainSegmentEnds[s], endColumn, ref currentTimeline);
                         }
                     }
                     continue;
                 }
 
-                sb.AppendLine(unit.Text);
+                AppendNoteLine(sb, unit.Text, unit.Timeline, ref currentTimeline);
 
                 if (unit.Entry != null)
-                    EmitCompanionAirs(sb, companionAirs, unit);
+                    EmitCompanionAirs(sb, companionAirs, unit, ref currentTimeline);
             }
 
             // Any remaining companion notes whose column did not match any
@@ -1049,7 +1097,7 @@ namespace ConvertHelper
             {
                 companionAirs.Sort(CompareUnit);
                 foreach (NoteUnit unit in companionAirs)
-                    sb.AppendLine(unit.Text);
+                    AppendNoteLine(sb, unit.Text, unit.Timeline, ref currentTimeline);
             }
         }
 
@@ -1071,7 +1119,7 @@ namespace ConvertHelper
         /// CHUNITHM permits the AIR on a same-time SLIDE to use a different
         /// column (e.g. AHD 42 0 6 2 SLD 96 next to SLD 42 0 0 4 96).
         /// </param>
-        private static void EmitCompanionAirsAt(StringBuilder sb, List<NoteUnit> pendingAir, NoteUnit ground, int atAbsTick, int segmentEndColumn, bool allowDifferentColumnAtStart = false)
+        private static void EmitCompanionAirsAt(StringBuilder sb, List<NoteUnit> pendingAir, NoteUnit ground, int atAbsTick, int segmentEndColumn, ref int currentTimeline, bool allowDifferentColumnAtStart = false)
         {
             if (ground.Entry == null)
                 return;
@@ -1146,7 +1194,7 @@ namespace ConvertHelper
                 if (airAbs != atAbsTick)
                     continue;
 
-                sb.AppendLine(air.Text);
+                AppendNoteLine(sb, air.Text, air.Timeline, ref currentTimeline);
                 pendingAir.RemoveAt(i);
 
                 // When multiple SLIDE chains end at the same point (e.g. a fan
@@ -1168,7 +1216,7 @@ namespace ConvertHelper
         /// this only matches Player 6 (AIR-SLIDE) - AHD / AIR notes are still
         /// placed by the per-segment EmitCompanionAirsAt logic.
         /// </summary>
-        private static void EmitAirSlidesAtStart(StringBuilder sb, List<NoteUnit> pendingAir, NoteUnit ground)
+        private static void EmitAirSlidesAtStart(StringBuilder sb, List<NoteUnit> pendingAir, NoteUnit ground, ref int currentTimeline)
         {
             if (ground.Entry == null)
                 return;
@@ -1189,7 +1237,7 @@ namespace ConvertHelper
                 if (!AirSlideMatchesGround(air.Entry, ground))
                     continue;
 
-                sb.AppendLine(air.Text);
+                AppendNoteLine(sb, air.Text, air.Timeline, ref currentTimeline);
                 pendingAir.RemoveAt(i);
             }
         }
@@ -1309,7 +1357,7 @@ namespace ConvertHelper
         /// same timing on different columns must attach to their own ground
         /// notes, not both to the first one.
         /// </summary>
-        private static void EmitCompanionAirs(StringBuilder sb, List<NoteUnit> pendingAir, NoteUnit ground)
+        private static void EmitCompanionAirs(StringBuilder sb, List<NoteUnit> pendingAir, NoteUnit ground, ref int currentTimeline)
         {
             if (ground.Entry == null)
                 return;
@@ -1373,7 +1421,7 @@ namespace ConvertHelper
                 int airAbs = air.Entry != null ? ToAbsoluteTick(air.Entry) : air.StartAbs;
                 if (airAbs < ground.StartAbs || airAbs > ground.EndAbs)
                     continue;
-                sb.AppendLine(air.Text);
+                AppendNoteLine(sb, air.Text, air.Timeline, ref currentTimeline);
                 pendingAir.RemoveAt(i);
 
                 // One ground carries exactly ONE AIR-SLIDE companion (1:1
@@ -1727,7 +1775,6 @@ namespace ConvertHelper
             {
                 EntryChuni child = chain[i];
                 int offset = ToAbsoluteTick(child) - parentTick;
-                int type = (int)(child.Value.Numerator / 100);
                 string xw = ToBase36(child.Column) + ToBase36(GetWidth(child));
                 // The segment height comes from the SEGMENT START entry's
                 // EndHeight (C2S apex height col10). ChuniPC stores EndHeight only
@@ -1738,11 +1785,15 @@ namespace ConvertHelper
                 // 0 1 19.0 -> follower must be 19.0*15=285="7X", not 1.0).
                 double segHeight = chain[i - 1].EndHeight > 0 ? chain[i - 1].EndHeight : chain[i - 1].Height;
                 string hh = EncodeAirHeight(segHeight);
-                // type 1 = fresh start, type 2 = final end, type 3+ = merged
-                // continuation (previous end also starts the next segment).
-                // A merged point ends with a control point (no AIR-ACTION) -> ">c";
-                // a final end carries AIR-ACTION -> ">s".
-                char marker = (type >= 3) ? 'c' : 's';
+                // The child marker follows the source type of the SEGMENT:
+                //   ASD (Air Slide)         -> ">s" (AIR-ACTION)
+                //   ASC (Air Slide Control) -> ">c" (control point)
+                // ChuniPC stores Parameter == 1 on ASC start entries and
+                // 0 on ASD start entries (AddAirSlideMarkerPair), so the
+                // segment start entry chain[i - 1] decides the marker.
+                // This keeps ASD->ASD relay points (中継点) as ">s" while ASC
+                // control segments render as ">c".
+                char marker = (chain[i - 1].Parameter == 1) ? 'c' : 's';
                 AppendChild(sb, offset, ">" + marker.ToString() + xw + hh);
             }
 
@@ -2112,6 +2163,20 @@ namespace ConvertHelper
         }
 
         /// <summary>
+        /// Appends a note line, inserting a @USETIL directive first when the
+        /// note belongs to a different soflan timeline than the previous line.
+        /// </summary>
+        private static void AppendNoteLine(StringBuilder sb, string noteLine, int timeline, ref int currentTimeline)
+        {
+            if (timeline != currentTimeline)
+            {
+                sb.AppendLine("@USETIL\t" + timeline.ToString());
+                currentTimeline = timeline;
+            }
+            sb.AppendLine(noteLine);
+        }
+
+        /// <summary>
         /// Appends a child note line "#Offset>..."
         /// </summary>
         private static void AppendChild(StringBuilder sb, int offset, string note)
@@ -2146,6 +2211,77 @@ namespace ConvertHelper
                 value /= 36;
             }
             return sb.ToString();
+        }
+
+        /// <summary>A parsed CHUNITHM SLA (soflan attribute) region.</summary>
+        private struct UgcSlaRegion
+        {
+            public int StartAbs;
+            public int EndAbs;
+            public int Column;
+            public int Width;
+            public int TimelineId;
+        }
+
+        /// <summary>
+        /// Parses chart.Tags["SLA"] (measure,offset,column,width,duration,timelineId;...)
+        /// into absolute-tick range checks used by ResolveTimeline.
+        /// </summary>
+        private static List<UgcSlaRegion> ParseSlaRegions(ChartChuni chart)
+        {
+            List<UgcSlaRegion> regions = new List<UgcSlaRegion>();
+            string raw;
+            if (chart == null || !chart.Tags.TryGetValue("SLA", out raw) || string.IsNullOrWhiteSpace(raw))
+                return regions;
+
+            foreach (string token in raw.Split(';'))
+            {
+                string[] p = token.Split(',');
+                if (p.Length < 6)
+                    continue;
+                int measure, offset, column, width, duration, timelineId;
+                if (!int.TryParse(p[0], out measure) || !int.TryParse(p[1], out offset) ||
+                    !int.TryParse(p[2], out column) || !int.TryParse(p[3], out width) ||
+                    !int.TryParse(p[4], out duration) || !int.TryParse(p[5], out timelineId))
+                    continue;
+
+                int startAbs = (measure * 384 + offset) * (StandardTicksPerMeasure / 384);
+                regions.Add(new UgcSlaRegion
+                {
+                    StartAbs = startAbs,
+                    EndAbs = startAbs + duration * (StandardTicksPerMeasure / 384),
+                    Column = column,
+                    Width = Math.Max(1, width),
+                    TimelineId = timelineId
+                });
+            }
+            return regions;
+        }
+
+        /// <summary>
+        /// Resolves the UGC timeline id for one note. A note uses the highest
+        /// timeline id among all SLA regions that fully contain its lane and
+        /// start tick (matching PenguinTools' ApplySlaTimelines logic).
+        /// </summary>
+        private static int ResolveTimeline(EntryChuni entry, List<UgcSlaRegion> regions)
+        {
+            if (entry == null)
+                return 0;
+
+            int abs = ToAbsoluteTick(entry);
+            int column = entry.Column;
+            int width = GetWidth(entry);
+            int result = 0;
+            foreach (UgcSlaRegion region in regions)
+            {
+                if (abs >= region.StartAbs && abs < region.EndAbs &&
+                    column >= region.Column && column + width <= region.Column + region.Width &&
+                    region.TimelineId > result)
+                {
+                    result = region.TimelineId;
+                }
+            }
+            return result;
         }
 
         private sealed class MusicMetadata

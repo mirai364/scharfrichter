@@ -23,6 +23,7 @@ namespace Scharfrichter.Tests
         public void NameReplaceSubstitutesWindowsForbiddenCharacters()
         {
             Assert.Equal("a_b_c_d_e_f_g", CommonHelper.nameReplace("a/b\\c\"d*e|f?g"));
+            Assert.Equal("a_b_", CommonHelper.nameReplace("a<b>"));
         }
 
         [Fact]

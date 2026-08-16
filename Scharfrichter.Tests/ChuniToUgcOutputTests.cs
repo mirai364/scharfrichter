@@ -525,6 +525,51 @@ namespace Scharfrichter.Tests
         }
 
         [Fact]
+        public void SlpExplicitTimelineIdEmitsOwnTil()
+        {
+            // SLP's last column is the soflan timeline id. The @TIL definition
+            // must be emitted on that timeline (not timeline 0), and a note
+            // covered by an SLA region on that lane must @USETIL into it.
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "SLP\t1\t0\t96\t0.500000\t1\n" +
+                "SLA\t1\t0\t0\t4\t96\t1\n" +
+                "TAP\t1\t0\t0\t4\n", out ugc);
+
+            Assert.Contains("@TIL\t1\t1'0\t0.50000", ugc);
+            Assert.Contains("@TIL\t1\t1'480\t1.00000", ugc);
+            Assert.Contains("@USETIL\t1", ugc);
+            Assert.Contains("#1'0:t04", ugc);
+        }
+
+        [Fact]
+        public void SlaRegionAssignsTimelineToCoveredNotes()
+        {
+            // SLA M O Cell Width Duration Timeline. A note at (2,0) on lane 15
+            // (the rightmost lane) falls inside the SLA region and must be
+            // switched onto timeline 1, while a note outside the lane range
+            // stays on the default timeline 0.
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "SLP\t1\t0\t96\t0.500000\t1\n" +
+                "SLA\t2\t0\t15\t1\t96\t1\n" +
+                "TAP\t2\t0\t15\t1\n" +
+                "TAP\t3\t0\t0\t1\n", out ugc);
+
+            Assert.Contains("@TIL\t1\t1'0\t0.50000", ugc);
+            Assert.Contains("@USETIL\t1", ugc);
+            // The lane-15 note is covered by the SLA and switched to timeline 1.
+            string afterUsetil = FirstLineAfter(ugc, "@USETIL\t1");
+            Assert.StartsWith("#2'0:tF1", afterUsetil);
+            // The later lane-0 note is outside the SLA region; it switches
+            // back to the default timeline 0.
+            Assert.Contains("@USETIL\t0", ugc);
+            Assert.Contains("#3'0:t01", ugc);
+        }
+
+        [Fact]
         public void RendersTimelineFromSfl()
         {
             // CHUNITHM SFL is a field scroll (SOF-LAN), so it is emitted as
@@ -691,7 +736,48 @@ namespace Scharfrichter.Tests
                 "ASC\t128\t192\t1\t1\tSLD\t1.0\t24\t0\t1\t19.0\tDEF\n", out ugc);
 
             Assert.Contains("#128'960:S117XN", ugc);
-            Assert.Contains("#120>s017X", ugc);
+            // ASC (Air Slide Control) segments end with a control point >c.
+            Assert.Contains("#120>c017X", ugc);
+        }
+
+        [Fact]
+        public void AirSlideRelayToAsdUsesActionChild()
+        {
+            // A standalone ASD whose TargetNote is ASD hands off to another
+            // air slide at its end. The endpoint is a relay point (中継点).
+            // The child marker follows the segment source type: ASD -> >s
+            // (AIR-ACTION), ASC -> >c (control point).
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\nASD\t48\t96\t7\t2\tASD\t5.0\t192\t7\t2\t5.0\tDEF\n", out ugc);
+
+            Assert.Contains("#48'480:S7223N", ugc);
+            Assert.Contains("#960>s7223", ugc);
+            Assert.DoesNotContain("#960>c7223", ugc);
+        }
+
+        [Fact]
+        public void AirSlideRelayToAsdAtChainEndUsesActionChild()
+        {
+            // music0059_04.c2s L2307/L2309:
+            //   ASD 48 0   7 2 SLD 5.0  96 7 2 5.0 DEF
+            //   ASD 48 96  7 2 ASD 5.0 192 7 2 5.0 DEF
+            // The second ASD relays to another air slide at its end (48,288).
+            // Since all segments are ASD (Air Slide, not ASC control), every
+            // child uses the >s action marker, including the merged waypoint
+            // and the ASD->ASD relay end.
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "ASD\t48\t0\t7\t2\tSLD\t5.0\t96\t7\t2\t5.0\tDEF\n" +
+                "ASD\t48\t96\t7\t2\tASD\t5.0\t192\t7\t2\t5.0\tDEF\n", out ugc);
+
+            // Chain parent at (48,0) -> merged waypoint at (48,96) -> relay end (48,288).
+            Assert.Contains("#48'0:S7223N", ugc);
+            Assert.Contains("#480>s7223", ugc);    // merged waypoint
+            Assert.Contains("#1440>s7223", ugc);   // relay to ASD -> >s
+            Assert.DoesNotContain("#480>c7223", ugc);
+            Assert.DoesNotContain("#1440>c7223", ugc);
         }
 
         [Fact]

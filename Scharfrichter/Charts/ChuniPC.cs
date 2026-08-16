@@ -19,6 +19,16 @@ namespace Scharfrichter.Codec.Charts
             public int currentIdentifier;
         }
 
+        private struct SlaRegion
+        {
+            public int Measure;
+            public int Offset;
+            public int Column;
+            public int Width;
+            public int Duration;
+            public int TimelineId;
+        }
+
         private sealed class ReadState
         {
             public ChartChuni Chart = new ChartChuni();
@@ -34,6 +44,7 @@ namespace Scharfrichter.Codec.Charts
             public Dictionary<Point, List<int>> AirHoldPending = new Dictionary<Point, List<int>>();
             public Dictionary<Point, List<int>> AirSlidePending = new Dictionary<Point, List<int>>();
             public Dictionary<Point, List<int>> AirCrushPending = new Dictionary<Point, List<int>>();
+            public List<SlaRegion> SlaRegions = new List<SlaRegion>();
         }
 
         /// <summary>
@@ -50,6 +61,7 @@ namespace Scharfrichter.Codec.Charts
             }
 
             AddMeasureEntries(state.Chart, state.CurrentMeasure, state.Resolution);
+            SerializeSlaRegions(state);
             FinalizeChart(state.Chart);
             return state.Chart;
         }
@@ -223,6 +235,9 @@ namespace Scharfrichter.Codec.Charts
                     AddAirCrushMarkerPair(parts, state, startLinearOffset, notesPosition, notesWidth);
                     break;
                 case "AHD":
+                case "AHX":
+                    // AHX is the hard variant of AIR-HOLD; the UGC converter
+                    // renders both as AIR-HOLD (H), keeping the same C2S layout.
                     AddAirHoldMarkerPair(parts, state, startLinearOffset, notesPosition, notesWidth);
                     break;
                 case "MNE":
@@ -246,6 +261,22 @@ namespace Scharfrichter.Codec.Charts
                     break;
                 case "STP":
                     AddStopEvent(parts, state.Chart, startLinearOffset);
+                    break;
+                case "SLA":
+                    // Soflan attribute region: assigns a timeline id to the
+                    // covered lane/time range. Parsed here and later applied by
+                    // the UGC converter as a @USETIL switch on matching notes.
+                    AddSlaRegion(parts, state, notesPosition, notesWidth);
+                    break;
+                case "ASO":
+                    // Air Solid: a newer CHUNITHM mechanic with no UGC v8
+                    // (Margrete) note equivalent. Recognised and skipped,
+                    // matching PenguinTools' UgcChartConverter.
+                    break;
+                case "HHD":
+                case "HHX":
+                    // Heaven Hold / Ex Heaven Hold: newer CHUNITHM mechanics
+                    // with no UGC v8 note equivalent. Recognised and skipped.
                     break;
                 default:
                     Console.WriteLine("There is a sign that has not been defined");
@@ -296,10 +327,14 @@ namespace Scharfrichter.Codec.Charts
         {
             switch (companion)
             {
-                case "HLD": return 2;
+                case "HLD":
+                case "HXD": return 2;
                 case "SLD":
-                case "SLC": return 3;
-                case "AHD": return 4;
+                case "SLC":
+                case "SXD":
+                case "SXC": return 3;
+                case "AHD":
+                case "AHX": return 4;
                 default: return 0;
             }
         }
@@ -350,20 +385,25 @@ namespace Scharfrichter.Codec.Charts
 
         /// <summary>
         /// Adds a linked start/end marker pair and merges it with pending endpoints when needed.
+        /// Returns the start entry (either the newly created one or the entry the
+        /// segment was merged into) so callers can attach metadata to the exact
+        /// start entry for this segment.
         /// </summary>
-        private static void AddLinkedMarkerPair(ChartChuni chart, Dictionary<Point, List<int>> pendingEntries, ref resetPoint reset, int player, int startLinearOffset, int endLinearOffset, int startColumn, int startWidth, int endColumn, int endWidth, int endValueBase)
+        private static EntryChuni AddLinkedMarkerPair(ChartChuni chart, Dictionary<Point, List<int>> pendingEntries, ref resetPoint reset, int player, int startLinearOffset, int endLinearOffset, int startColumn, int startWidth, int endColumn, int endWidth, int endValueBase)
         {
             int currentIdentifier = AllocateIdentifier(ref reset, startLinearOffset, endLinearOffset);
             Point startPoint = new Point() { linearOffset = startLinearOffset, position = startColumn };
 
+            EntryChuni startEntry;
             if (pendingEntries.ContainsKey(startPoint))
             {
-                currentIdentifier = MergeWithPendingStart(chart, pendingEntries, startPoint);
+                startEntry = MergeWithPendingStart(chart, pendingEntries, startPoint);
+                currentIdentifier = startEntry.Identifier;
                 reset.currentIdentifier--;
             }
             else
             {
-                EntryChuni startEntry = CreateBaseEntry(EntryTypeChuni.Marker, player, startLinearOffset, startColumn, 100 + startWidth);
+                startEntry = CreateBaseEntry(EntryTypeChuni.Marker, player, startLinearOffset, startColumn, 100 + startWidth);
                 startEntry.Identifier = currentIdentifier;
                 chart.Entries.Add(startEntry);
             }
@@ -372,6 +412,8 @@ namespace Scharfrichter.Codec.Charts
             endEntry.Identifier = currentIdentifier;
             chart.Entries.Add(endEntry);
             RegisterPendingEnd(pendingEntries, endLinearOffset, endColumn, chart.Entries.Count - 1);
+
+            return startEntry;
         }
 
         /// <summary>
@@ -395,8 +437,9 @@ namespace Scharfrichter.Codec.Charts
 
         /// <summary>
         /// Reuses a previously written end point as the start of a connected note.
+        /// Returns the merged entry.
         /// </summary>
-        private static int MergeWithPendingStart(ChartChuni chart, Dictionary<Point, List<int>> pendingEntries, Point point)
+        private static EntryChuni MergeWithPendingStart(ChartChuni chart, Dictionary<Point, List<int>> pendingEntries, Point point)
         {
             List<int> list = pendingEntries[point];
             int key = list[0];
@@ -411,7 +454,7 @@ namespace Scharfrichter.Codec.Charts
             else
                 pendingEntries[point] = list;
 
-            return entry.Identifier;
+            return entry;
         }
 
         /// <summary>
@@ -456,7 +499,7 @@ namespace Scharfrichter.Codec.Charts
             // present (7 columns total, index 0..6); an optional color lives in
             // column 7 (index 7).
             int endLinearOffset = startLinearOffset + int.Parse(parts[6]);
-            AddLinkedMarkerPair(state.Chart, state.AirHoldPending, ref state.AirHoldResetPoint, 4, startLinearOffset, endLinearOffset, notesPosition, notesWidth, notesPosition, notesWidth, 200);
+            EntryChuni startEntry = AddLinkedMarkerPair(state.Chart, state.AirHoldPending, ref state.AirHoldResetPoint, 4, startLinearOffset, endLinearOffset, notesPosition, notesWidth, notesPosition, notesWidth, 200);
 
             // Record the companion note type (TAP / CHR / HLD / SLD / SLC /
             // AHD / AIR) as the Parameter so the UGC converter can place the
@@ -465,19 +508,10 @@ namespace Scharfrichter.Codec.Charts
             string ahCompanion = parts.Length >= 7 ? parts[5] : "";
             int ahCompanionCode = MapCompanionCode(ahCompanion);
             string ahColor = parts.Length > 7 ? parts[7] : "";
-            for (int i = state.Chart.Entries.Count - 1; i >= 0; i--)
-            {
-                EntryChuni entry = state.Chart.Entries[i];
-                if (entry.Type == EntryTypeChuni.Marker && entry.Player == 4 &&
-                    (int)((double)entry.LinearOffset) == startLinearOffset && entry.Column == notesPosition)
-                {
-                    if (ahCompanionCode != 0)
-                        entry.Parameter = ahCompanionCode;
-                    if (!string.IsNullOrEmpty(ahColor))
-                        entry.Tag = ahColor;
-                    break;
-                }
-            }
+            if (ahCompanionCode != 0)
+                startEntry.Parameter = ahCompanionCode;
+            if (!string.IsNullOrEmpty(ahColor))
+                startEntry.Tag = ahColor;
         }
 
         /// <summary>
@@ -493,31 +527,25 @@ namespace Scharfrichter.Codec.Charts
             int endColumn = int.Parse(parts[8]);
             int endWidth = parts.Length > 9 ? int.Parse(parts[9]) : notesWidth;
 
-            AddLinkedMarkerPair(state.Chart, state.AirSlidePending, ref state.AirSlideResetPoint, 6, startLinearOffset, endLinearOffset, notesPosition, notesWidth, endColumn, endWidth, 200);
+            EntryChuni startEntry = AddLinkedMarkerPair(state.Chart, state.AirSlidePending, ref state.AirSlideResetPoint, 6, startLinearOffset, endLinearOffset, notesPosition, notesWidth, endColumn, endWidth, 200);
 
             // Metadata on the start entry: height (col 6), end height (col 10),
             // tag/color (col 11), target note (col 5).
-            // NOTE: when the start is a merged continuation (MergeWithPendingStart
-            // raised its encoded type), FindEntry must NOT restrict to type 1.
-            EntryChuni startEntry = FindEntry(state.Chart, 6, startLinearOffset, notesPosition, false);
-            if (startEntry != null)
-            {
-                if (parts.Length > 6 && double.TryParse(parts[6], out double height))
-                    startEntry.Height = height;
-                if (parts.Length > 10 && double.TryParse(parts[10], out double endHeight))
-                    startEntry.EndHeight = endHeight;
-                if (parts.Length > 11)
-                    startEntry.Tag = parts[11];
-                startEntry.TargetNote = GetOptionalPart(parts, 5);
-                // ASC (Air Slide Control) is a control point that uses the
-                // apex height (EndHeight, col10) for the UGC S line height
-                // (e.g. ASC 128 192 1 1 SLD 1.0 24 0 1 19.0 -> parent line
-                // height 19.0*15=285="7X").
-                // ASD (Air Slide) uses the start height (Height, col6).
-                // Player 6 (AirSlide) Parameter is unused for companion
-                // matching, so it can be used as a flag.
-                startEntry.Parameter = (noteType == "ASC") ? 1 : 0;
-            }
+            if (parts.Length > 6 && double.TryParse(parts[6], out double height))
+                startEntry.Height = height;
+            if (parts.Length > 10 && double.TryParse(parts[10], out double endHeight))
+                startEntry.EndHeight = endHeight;
+            if (parts.Length > 11)
+                startEntry.Tag = parts[11];
+            startEntry.TargetNote = GetOptionalPart(parts, 5);
+            // ASC (Air Slide Control) is a control point that uses the
+            // apex height (EndHeight, col10) for the UGC S line height
+            // (e.g. ASC 128 192 1 1 SLD 1.0 24 0 1 19.0 -> parent line
+            // height 19.0*15=285="7X").
+            // ASD (Air Slide) uses the start height (Height, col6).
+            // Player 6 (AirSlide) Parameter is unused for companion
+            // matching, so it can be used as a flag.
+            startEntry.Parameter = (noteType == "ASC") ? 1 : 0;
         }
 
         /// <summary>
@@ -531,45 +559,18 @@ namespace Scharfrichter.Codec.Charts
             int endColumn = int.Parse(parts[8]);
             int endWidth = parts.Length > 9 ? int.Parse(parts[9]) : notesWidth;
 
-            AddLinkedMarkerPair(state.Chart, state.AirCrushPending, ref state.AirCrushResetPoint, 7, startLinearOffset, endLinearOffset, notesPosition, notesWidth, endColumn, endWidth, 200);
+            EntryChuni startEntry = AddLinkedMarkerPair(state.Chart, state.AirCrushPending, ref state.AirCrushResetPoint, 7, startLinearOffset, endLinearOffset, notesPosition, notesWidth, endColumn, endWidth, 200);
 
             // Metadata on the start entry: crush interval (col 5), height (col 6),
             // end height (col 10), tag/color (col 11).
-            // NOTE: when the start is a merged continuation (MergeWithPendingStart
-            // raised its encoded type), FindEntry must NOT restrict to type 1.
-            EntryChuni startEntry = FindEntry(state.Chart, 7, startLinearOffset, notesPosition, false);
-            if (startEntry != null)
-            {
-                if (parts.Length > 5 && int.TryParse(parts[5], out int crushInterval))
-                    startEntry.CrushInterval = crushInterval;
-                if (parts.Length > 6 && double.TryParse(parts[6], out double height))
-                    startEntry.Height = height;
-                if (parts.Length > 10 && double.TryParse(parts[10], out double endHeight))
-                    startEntry.EndHeight = endHeight;
-                if (parts.Length > 11)
-                    startEntry.Tag = parts[11];
-            }
-        }
-
-        /// <summary>
-        /// Finds the most recent marker entry for a player/offset/column.
-        /// When startOnly is true, only entries whose encoded type digit is 1
-        /// (i.e. Value/100 == 1, a chain start) are returned.
-        /// </summary>
-        private static EntryChuni FindEntry(ChartChuni chart, int player, int linearOffset, int column, bool startOnly)
-        {
-            for (int i = chart.Entries.Count - 1; i >= 0; i--)
-            {
-                EntryChuni entry = chart.Entries[i];
-                if (entry.Type != EntryTypeChuni.Marker || entry.Player != player)
-                    continue;
-                if ((int)((double)entry.LinearOffset) != linearOffset || entry.Column != column)
-                    continue;
-                if (startOnly && (int)(entry.Value.Numerator / 100) != 1)
-                    continue;
-                return entry;
-            }
-            return null;
+            if (parts.Length > 5 && int.TryParse(parts[5], out int crushInterval))
+                startEntry.CrushInterval = crushInterval;
+            if (parts.Length > 6 && double.TryParse(parts[6], out double height))
+                startEntry.Height = height;
+            if (parts.Length > 10 && double.TryParse(parts[10], out double endHeight))
+                startEntry.EndHeight = endHeight;
+            if (parts.Length > 11)
+                startEntry.Tag = parts[11];
         }
 
         /// <summary>
@@ -577,15 +578,19 @@ namespace Scharfrichter.Codec.Charts
         /// </summary>
         private static void AddSpeedChangeTags(string[] parts, ChartChuni chart, int currentMeasure, int resolution, int measurePosition, int duration)
         {
-            string til00 = "";
-            if (chart.Tags.ContainsKey("TIL00"))
-                til00 = chart.Tags["TIL00"] + ", ";
+            // SLP carries an explicit timeline id in the last column; SFL uses
+            // the default timeline 0. The speed change and its 1.0 restore are
+            // both emitted on that timeline so UGC can @USETIL into it.
+            int timelineId = parts[0] == "SLP" && parts.Length > 5 ? int.Parse(parts[5]) : 0;
+            string key = "TIL" + timelineId.ToString();
 
-            chart.Tags["TIL00"] = til00 + FormatTilingPoint(currentMeasure, measurePosition, resolution) + ":" + double.Parse(parts[4]) + ", ";
+            string til = chart.Tags.ContainsKey(key) ? chart.Tags[key] + ", " : "";
+
+            chart.Tags[key] = til + FormatTilingPoint(currentMeasure, measurePosition, resolution) + ":" + double.Parse(parts[4]) + ", ";
 
             int nextMeasure = (int)Math.Floor(((double)currentMeasure * resolution + measurePosition + duration) / resolution);
             int nextPosition = currentMeasure * resolution + measurePosition + duration - nextMeasure * resolution;
-            chart.Tags["TIL00"] += FormatTilingPoint(nextMeasure, nextPosition, resolution) + ":1.0";
+            chart.Tags[key] += FormatTilingPoint(nextMeasure, nextPosition, resolution) + ":1.0";
             chart.Tags["HISPEED"] = "00";
         }
 
@@ -629,6 +634,47 @@ namespace Scharfrichter.Codec.Charts
             freezeEntry.Player = 1;
             freezeEntry.Value = new Fraction(1, 1);
             chart.Entries.Add(freezeEntry);
+        }
+
+        /// <summary>
+        /// Parses a SLA (soflan attribute region) line. The region assigns a
+        /// timeline id to the covered lane/time span so the UGC converter can
+        /// switch matching notes onto that timeline (@USETIL).
+        /// </summary>
+        private static void AddSlaRegion(string[] parts, ReadState state, int notesPosition, int notesWidth)
+        {
+            // SLA M O Cell Width Duration Timeline
+            int duration = parts.Length > 5 ? int.Parse(parts[5]) : 0;
+            int timelineId = parts.Length > 6 ? int.Parse(parts[6]) : 0;
+            state.SlaRegions.Add(new SlaRegion
+            {
+                Measure = state.CurrentMeasure,
+                Offset = int.Parse(parts[2]),
+                Column = notesPosition,
+                Width = Math.Max(1, notesWidth),
+                Duration = duration,
+                TimelineId = timelineId
+            });
+        }
+
+        /// <summary>
+        /// Serializes parsed SLA regions into chart.Tags["SLA"] as
+        /// "measure,offset,column,width,duration,timelineId;..." for the UGC
+        /// converter.
+        /// </summary>
+        private static void SerializeSlaRegions(ReadState state)
+        {
+            if (state.SlaRegions.Count == 0)
+                return;
+
+            List<string> tokens = new List<string>();
+            foreach (SlaRegion region in state.SlaRegions)
+            {
+                tokens.Add(
+                    region.Measure + "," + region.Offset + "," + region.Column + "," +
+                    region.Width + "," + region.Duration + "," + region.TimelineId);
+            }
+            state.Chart.Tags["SLA"] = string.Join(";", tokens);
         }
 
         /// <summary>

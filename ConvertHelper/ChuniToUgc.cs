@@ -603,6 +603,12 @@ namespace ConvertHelper
         /// @BEAT only when its meter differs from the previous bar. This keeps
         /// the bar numbering consistent with the note positions and avoids a
         /// stray 4/4 @BEAT at bar 0 that would shift every later boundary.
+        ///
+        /// A bar whose length differs from the length implied by its meter
+        /// (a remainder bar produced when a meter change lands inside a
+        /// CHUNITHM grid measure, e.g. metre 7/8 spanning two grid measures)
+        /// is emitted with its ACTUAL metre computed from the bar length, so
+        /// UMIGURI's internal bar accumulation matches the note positions.
         /// </summary>
         private static void WriteBeatHeader(StringBuilder sb, ChartChuni chart)
         {
@@ -612,12 +618,46 @@ namespace ConvertHelper
             int prevDenominator = int.MinValue;
             foreach (BarInfo barInfo in bars)
             {
-                if (barInfo.Numerator == prevNumerator && barInfo.Denominator == prevDenominator)
-                    continue; // unchanged meter: UMIGURI carries it forward
+                int expectedLength = StandardTicksPerMeasure * barInfo.Numerator / barInfo.Denominator;
+                bool meterChanged = barInfo.Numerator != prevNumerator || barInfo.Denominator != prevDenominator;
+                bool lengthMismatch = barInfo.Length != expectedLength;
+                if (!meterChanged && !lengthMismatch)
+                    continue; // unchanged meter with a full bar: UMIGURI carries it forward
+
+                if (lengthMismatch)
+                {
+                    // Remainder bar (e.g. 480 ticks = 1/4). Emit the metre that
+                    // reproduces this exact bar length so every later bar's
+                    // absolute position stays aligned with the source grid.
+                    int g = Gcd(barInfo.Length, StandardTicksPerMeasure);
+                    int num = barInfo.Length / g;
+                    int den = StandardTicksPerMeasure / g;
+                    sb.AppendLine("@BEAT\t" + barInfo.Bar + "\t" + num + "\t" + den);
+                    prevNumerator = num;
+                    prevDenominator = den;
+                    continue;
+                }
+
                 sb.AppendLine("@BEAT\t" + barInfo.Bar + "\t" + barInfo.Numerator + "\t" + barInfo.Denominator);
                 prevNumerator = barInfo.Numerator;
                 prevDenominator = barInfo.Denominator;
             }
+        }
+
+        /// <summary>
+        /// Greatest common divisor used to reduce a remainder bar's metre.
+        /// </summary>
+        private static int Gcd(int a, int b)
+        {
+            a = Math.Abs(a);
+            b = Math.Abs(b);
+            while (b != 0)
+            {
+                int t = b;
+                b = a % b;
+                a = t;
+            }
+            return a;
         }
 
         /// <summary>

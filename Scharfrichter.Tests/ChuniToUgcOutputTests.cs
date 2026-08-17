@@ -537,6 +537,37 @@ namespace Scharfrichter.Tests
         }
 
         [Fact]
+        public void RemainderBarAfterCompoundMeterEmitsEffectiveBeat()
+        {
+            // A 7/8 metre spanning two CHUNITHM grid measures leaves a 480-tick
+            // remainder bar before the next MET (MET 58). That bar must be
+            // emitted with its ACTUAL metre (1/4) so UMIGURI accumulates the
+            // correct absolute position; previously it was skipped because the
+            // source metre (7/8) was unchanged, shifting every later note by
+            // 1200 ticks (e.g. Arcahv's "#68'0:s04" onwards).
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "MET\t0\t0\t4\t4\n" +
+                "MET\t56\t0\t8\t7\n" +
+                "MET\t58\t0\t384\t1\n" +  // Arcahv tuplet run: collapsed with
+                "MET\t58\t2\t192\t1\n" +  // the terminal MET below at measure
+                "MET\t58\t4\t128\t1\n" +  // boundary (position 0).
+                "MET\t58\t7\t96\t1\n" +
+                "MET\t58\t11\t64\t64\n" +
+                "MET\t59\t0\t4\t4\n", out ugc);
+
+            // MET 56 (7/8) covers grid measures 56-57: bars 56,57 (7/8) plus a
+            // 480-tick remainder -> the remainder bar must be @BEAT 1 4. The
+            // tuplet run in measure 58 collapses to 64/64 at the measure start.
+            Assert.Contains("@BEAT\t0\t4\t4", ugc);
+            Assert.Contains("@BEAT\t56\t7\t8", ugc);
+            Assert.Contains("@BEAT\t58\t1\t4", ugc);
+            Assert.Contains("@BEAT\t59\t64\t64", ugc);
+            Assert.Contains("@BEAT\t60\t4\t4", ugc);
+        }
+
+        [Fact]
         public void StpNotEmittedAsBeatOrMeasureLength()
         {
             // STP (stop) events must not leak into @BEAT or change measure

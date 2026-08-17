@@ -127,6 +127,60 @@ namespace Scharfrichter.Tests
         }
 
         [Fact]
+        public void SoffsetTrueWhenPlayableNoteAtMeasureZero()
+        {
+            // A TAP at offset 0 must be hit at the song start, so the chart
+            // needs a positive song offset (@FLAG SOFFSET TRUE).
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\nTAP\t0\t0\t0\t4\n", out ugc);
+            Assert.Contains("@FLAG\tSOFFSET\tTRUE", ugc);
+        }
+
+        [Fact]
+        public void SoffsetFalseWhenOnlyDecorationAtMeasureZero()
+        {
+            // Invitation (music0059_04.c2s) starts measure 0 with decorative
+            // ALD (AIR-CRUSH) only. No playable note requires the offset, so
+            // @FLAG SOFFSET must stay FALSE.
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "ALD\t0\t0\t0\t1\t0\t1.0\t96\t0\t1\t1.0\tDEF\n" +
+                "TAP\t1\t0\t0\t4\n", out ugc);
+            Assert.Contains("@FLAG\tSOFFSET\tFALSE", ugc);
+        }
+
+        [Fact]
+        public void SoffsetTrueWhenPlayableNoteAnywhereInMeasureZero()
+        {
+            // 0090_02.c2s has CHR at (0,288) and HLD at (0,360). These notes
+            // must be hit near the song start, so measuring "measure 0" over
+            // the whole 0..383 grid still requires @FLAG SOFFSET TRUE.
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "CHR\t0\t288\t4\t4\tUP\n" +
+                "HLD\t0\t360\t0\t4\t1032\n", out ugc);
+            Assert.Contains("@FLAG\tSOFFSET\tTRUE", ugc);
+        }
+
+        [Fact]
+        public void SoffsetTrueWhenAirCrushWithIntervalInMeasureZero()
+        {
+            // 8310_05.c2s starts measure 0 with ALD (AIR-CRUSH) chains that
+            // carry CrushInterval > 0. These are real playable notes the
+            // player must hit repeatedly near the song start, unlike the
+            // interval-0 decorative ALD in Invitation, so SOFFSET must be TRUE.
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "ALD\t0\t96\t0\t4\t6\t4.0\t1\t0\t4\t4.0\tDEF\n" +
+                "ALD\t0\t96\t2\t4\t6\t8.0\t1\t2\t4\t8.0\tDEF\n", out ugc);
+            Assert.Contains("@FLAG\tSOFFSET\tTRUE", ugc);
+        }
+
+        [Fact]
         public void RendersHold()
         {
             string ugc;
@@ -695,7 +749,7 @@ namespace Scharfrichter.Tests
         [Fact]
         public void RendersNoteSpeedFromDcm()
         {
-            // CHUNITHM DCM is a note-speed (追い越し / overtake) event:
+            // CHUNITHM DCM is a note-speed (overtake) event:
             //   DCM 17 192 3 0.500000
             //   DCM [Measure] [Offset] [Duration] [Speed]
             // It is emitted as UGC @SPDMOD (note speed), not @TIL (soflan).
@@ -805,7 +859,7 @@ namespace Scharfrichter.Tests
         public void AirSlideRelayToAsdUsesActionChild()
         {
             // A standalone ASD whose TargetNote is ASD hands off to another
-            // air slide at its end. The endpoint is a relay point (中継点).
+            // air slide at its end. The endpoint is a relay point.
             // The child marker follows the segment source type: ASD -> >s
             // (AIR-ACTION), ASC -> >c (control point).
             string ugc;
@@ -858,7 +912,8 @@ namespace Scharfrichter.Tests
         {
             // AIR-CRUSH color tag -> UGC color character correspondence table.
             // The trailing color column (parts[11]) is mapped by C2UAirCrushColor:
-            //   DEF -> "0" (通常), BLK -> "D" (黒), CYN -> "7" (空), GRY -> "C" (白)
+            //   DEF -> "0" (default), BLK -> "D" (black), CYN -> "7" (sky),
+            //   GRY -> "C" (white)
             string ugc;
             ParseAndConvert(
                 "RESOLUTION\t384\n" +

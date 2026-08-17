@@ -450,6 +450,10 @@ namespace ConvertHelper
             double mainBpm = (double)chart.DefaultBPM;
             if (mainBpm <= 0) mainBpm = 120;
 
+            // SOFFSET is TRUE only when a playable note (TAP/AIR etc.) exists
+            // in measure 0; decoration-only (ALD) charts stay FALSE.
+            bool requireSoffset = HasPlayableNoteAtMeasureZero(chart);
+
             sb.AppendLine("@VER\t8");
             sb.AppendLine("@EXVER\t1");
 
@@ -505,7 +509,7 @@ namespace ConvertHelper
 
             // Flags
             sb.AppendLine("@FLAG\tDIFFTTL\tFALSE");
-            sb.AppendLine("@FLAG\tSOFFSET\tTRUE");
+            sb.AppendLine("@FLAG\tSOFFSET\t" + (requireSoffset ? "TRUE" : "FALSE"));
             sb.AppendLine("@FLAG\tCLICK\tTRUE");
             sb.AppendLine("@FLAG\tEXLONG\tFALSE");
             sb.AppendLine("@FLAG\tBGMWCMP\tFALSE");
@@ -534,6 +538,45 @@ namespace ConvertHelper
             sb.AppendLine("@MAINTIL\t0");
             sb.AppendLine("@ENDHEAD");
             sb.AppendLine();
+        }
+
+        /// <summary>
+        /// Returns true if the chart places a playable note (a Marker of a
+        /// non-decoration family) anywhere in measure 0 (LinearOffset 0..383).
+        /// CHUNITHM needs a positive song offset when tap / air / hold / slide
+        /// notes must be hit at the song start (e.g. 0090_02.c2s has CHR at
+        /// (0,288) and HLD at (0,360)), while charts where measure 0 only
+        /// carries ornaments (e.g. ALD crush decorations with interval 0) do
+        /// not.
+        ///
+        /// AIR-CRUSH (ALD) is normally an ornament, but an ALD with a
+        /// non-zero CrushInterval is a real playable note that the player
+        /// must hit repeatedly (e.g. 8310_05.c2s has ALD at (0,96) with
+        /// interval 6), so it also requires the offset.
+        /// </summary>
+        private static bool HasPlayableNoteAtMeasureZero(ChartChuni chart)
+        {
+            foreach (EntryChuni entry in chart.Entries)
+            {
+                if (entry.Type != EntryTypeChuni.Marker)
+                    continue;
+                int offset = (int)((double)entry.LinearOffset);
+                if (offset < 0 || offset >= 384)
+                    continue; // not in measure 0
+                // Decoration-only families are excluded: an AIR-CRUSH with
+                // interval 0 is an ornament that does not require an offset,
+                // while everything else (TAP/CHR/FLK/MNE=1, HLD=2, SLD=3,
+                // AHD=4, AIR=5, ASD=6) and an ALD with interval > 0 are
+                // playable.
+                if (entry.Player == PlayerAirCrush)
+                {
+                    if (entry.CrushInterval > 0)
+                        return true;
+                    continue;
+                }
+                return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -771,8 +814,8 @@ namespace ConvertHelper
         /// UMIGURI v8 distinguishes the two speed concepts:
         ///   @SPDMOD note speed definition:         BarTick Speed
         ///   @TIL    timeline definition (soflan):  TimelineId BarTick Speed
-        /// CHUNITHM DCM changes the note approach speed (追い越し / overtake),
-        /// so it maps to @SPDMOD, while SFL/SLP scroll the whole field and are
+        /// CHUNITHM DCM changes the note approach speed (overtake), so it maps
+        /// to @SPDMOD, while SFL/SLP scroll the whole field and are
         /// emitted as @TIL entries.
         ///
         /// Each DCM emits two points (the speed change and the 1.0 restore);
@@ -1891,8 +1934,8 @@ namespace ConvertHelper
                 // ChuniPC stores Parameter == 1 on ASC start entries and
                 // 0 on ASD start entries (AddAirSlideMarkerPair), so the
                 // segment start entry chain[i - 1] decides the marker.
-                // This keeps ASD->ASD relay points (中継点) as ">s" while ASC
-                // control segments render as ">c".
+                // This keeps ASD->ASD relay points as ">s" while ASC control
+                // segments render as ">c".
                 char marker = (chain[i - 1].Parameter == 1) ? 'c' : 's';
                 AppendChild(sb, offset, ">" + marker.ToString() + xw + hh);
             }

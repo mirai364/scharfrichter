@@ -1721,6 +1721,19 @@ namespace ConvertHelper
                     pendingStarts[pairKey] = list;
                 }
 
+                // ChuniPC encodes linked notes as:
+                //   type 1 = pure start (new chain),
+                //   type 2 = pure end,
+                //   type 3+ = merged start (a previous end that also begins
+                //   the next segment). A type 3+ entry BOTH consumes the
+                //   latest pending start (acting as this segment's end) AND
+                //   registers itself as the next segment's candidate start.
+                //   A pure type 2 end only consumes and is never re-registered.
+                //
+                // Earlier the final type-3 segment of a section was left in
+                // the pending list as a candidate start, so a later section's
+                // first start paired with it and produced a huge AIR-HOLD
+                // child (AttraqtiA 0999_03: #16'1440:H84N -> #60960>s).
                 if (type == 1)
                 {
                     list.Add(entry);
@@ -1752,12 +1765,16 @@ namespace ConvertHelper
                         if (unit != null)
                             units.Add(unit);
                     }
-                    // The end also becomes a candidate start for the next
-                    // connected pair.
-                    if (list.Count == 0)
+
+                    if (type >= 3)
                     {
+                        // Merged start: this entry is also the beginning of the
+                        // next connected segment, so it becomes a candidate
+                        // start. The segment's own connected end arrives later.
                         list.Add(entry);
                     }
+                    // A pure type-2 end never becomes a candidate start: the
+                    // next segment creates its own type-3 merged start here.
                 }
             }
         }

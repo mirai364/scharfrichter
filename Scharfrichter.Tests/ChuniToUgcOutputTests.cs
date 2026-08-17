@@ -622,6 +622,34 @@ namespace Scharfrichter.Tests
         }
 
         [Fact]
+        public void AirHoldChainDoesNotPairAcrossSections()
+        {
+            // AttraqtiA (music0999_03.c2s) has two separated AHD col8 chains:
+            //   measure 16: AHD 16 0/96/192 8 4 (each 96 ticks)
+            //   measure 48: AHD 48 0/96/192 8 4 (each 96 ticks)
+            // Each 8-column segment must pair with its OWN end (96 ticks). The
+            // previous build treated the merged start (type 3+) of the last
+            // measure-16 segment as an "end", which then paired with a later
+            // section's merged start and produced a huge AIR-HOLD child
+            // (#60960>s = measure 48).
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "AHD\t16\t0\t8\t4\tTAP\t96\tDEF\n" +
+                "AHD\t16\t96\t8\t4\tAHD\t96\tDEF\n" +
+                "AHD\t16\t192\t8\t4\tAHD\t96\tDEF\n" +
+                "AHD\t48\t0\t8\t4\tTAP\t96\tDEF\n" +
+                "AHD\t48\t96\t8\t4\tAHD\t96\tDEF\n" +
+                "AHD\t48\t192\t8\t4\tAHD\t96\tDEF\n", out ugc);
+
+            // Each AHD parent has a 480-tick (96 grid) child, never a huge one.
+            Assert.Contains("#16'0:H84N", ugc);
+            Assert.Contains("#16'960:H84N", ugc);
+            Assert.Contains("#480>s", ugc);
+            Assert.DoesNotContain("#60960>s", ugc);
+        }
+
+        [Fact]
         public void StpNotEmittedAsBeatOrMeasureLength()
         {
             // STP (stop) events must not leak into @BEAT or change measure

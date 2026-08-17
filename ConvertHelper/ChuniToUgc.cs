@@ -83,6 +83,16 @@ namespace ConvertHelper
         private const int AirCrushIntervalAutoThreshold = 9600; // 25 measures * 384
 
         /// <summary>
+        /// Tuplet denominator threshold. METs with numerator 1 and a denominator
+        /// at least this large (e.g. 1/96, 1/128, 1/192, 1/384) are Arcahv-style
+        /// tuplet fraction markers, not real bars. They are collapsed with the
+        /// next normal MET (their terminal), which is anchored to the measure
+        /// boundary. Real sequential meters (7/8 -> 9/8, 3/8 -> 1/8, ...) keep
+        /// their exact grid positions so each becomes its own @BEAT bar.
+        /// </summary>
+        private const int TupletDenominatorThreshold = 96;
+
+        /// <summary>
         /// The UMIGURI bar layout (bar number, start tick, length and meter),
         /// built from the CHUNITHM MET events. Used to convert fixed-grid note
         /// positions into @BEAT-consistent Bar'Tick positions.
@@ -844,12 +854,30 @@ namespace ConvertHelper
         }
 
         /// <summary>
-        /// Collapses the raw MET events into one meter change per CHUNITHM grid
-        /// measure. When a measure contains several METs (Arcahv-style tuplet
-        /// runs), only the last meter is kept and it is anchored to the measure
-        /// start, since UMIGURI @BEAT cannot express sub-measure meter changes.
-        /// Single MET events keep their exact position (e.g. MET 15 96 4 4
-        /// starts a new bar at grid position 96 of measure 15).
+        /// Returns whether a MET is an Arcahv-style tuplet fraction marker
+        /// (numerator 1 with a denominator at least 96, e.g. 1/96, 1/128,
+        /// 1/192, 1/384). Such entries scale the measure but never form a
+        /// real bar, unlike real sequential meters (7/8, 9/8, 3/8, 1/16 ...).
+        /// </summary>
+        private static bool IsTupletMarker(MetInfo met)
+        {
+            return met.Numerator == 1 && met.Denominator >= TupletDenominatorThreshold;
+        }
+
+        /// <summary>
+        /// Collapses Arcahv-style tuplet runs while preserving real sequential
+        /// meter changes.
+        ///
+        /// Within one CHUNITHM grid measure, a run of tuplet fraction markers
+        /// (1/384, 1/192, 1/128, 1/96) followed by a normal MET is treated as a
+        /// single tuplet sequence: the markers are dropped and the terminal MET
+        /// is anchored to the measure boundary so the whole measure becomes one
+        /// bar (e.g. Arcahv's measure 2 -> @BEAT 2 64 64).
+        ///
+        /// Real meters at distinct positions inside a measure (e.g. music0998's
+        /// MET 42 0 8 7 followed by MET 42 336 8 9) are each kept at their exact
+        /// grid position so BuildBars turns them into separate @BEAT bars
+        /// (7/8 bar, then 9/8 bar) instead of losing all but the last one.
         /// </summary>
         private static List<MetInfo> CollapseMets(List<MetInfo> mets)
         {
@@ -869,10 +897,42 @@ namespace ConvertHelper
             foreach (List<MetInfo> list in byMeasure.Values)
             {
                 list.Sort((a, b) => a.Position.CompareTo(b.Position));
-                MetInfo last = list[list.Count - 1];
-                if (list.Count > 1)
-                    last.Position = 0; // tuplets: meter applies at the measure boundary
-                collapsed.Add(last);
+                int i = 0;
+                while (i < list.Count)
+                {
+                    MetInfo met = list[i];
+                    if (IsTupletMarker(met))
+                    {
+                        // A tuplet run starts here. Find the first normal MET
+                        // after the markers - that is the terminal that resolves
+                        // the run. Anchor it to the measure boundary so the whole
+                        // measure is one bar of that meter.
+                        int j = i + 1;
+                        while (j < list.Count && IsTupletMarker(list[j]))
+                            j++;
+                        if (j < list.Count)
+                        {
+                            MetInfo terminal = list[j];
+                            terminal.Position = 0;
+                            collapsed.Add(terminal);
+                            i = j + 1;
+                        }
+                        else
+                        {
+                            // Trailing tuplet markers with no terminal in this
+                            // measure; they only condense the following boundary
+                            // and are dropped.
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // Real meter change: keep it at its exact grid position
+                        // so sequential meters each become their own bar.
+                        collapsed.Add(met);
+                        i++;
+                    }
+                }
             }
             collapsed.Sort((a, b) =>
             {

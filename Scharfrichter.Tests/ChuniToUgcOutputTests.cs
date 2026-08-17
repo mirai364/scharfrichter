@@ -507,6 +507,36 @@ namespace Scharfrichter.Tests
         }
 
         [Fact]
+        public void SequentialMetersInSameMeasureSplitIntoBars()
+        {
+            // Arcahv (music0998_03.c2s) measure 42 contains two REAL sequential
+            // meters: MET 42 0 8 7 (7/8) then MET 42 336 8 9 (9/8). Unlike the
+            // Arcahv-style tuplet fractions (1/384, 1/192, ...), these are real
+            // bars and must each become their own @BEAT entry instead of being
+            // collapsed into just the last one.
+            string ugc;
+            ParseAndConvert(
+                "RESOLUTION\t384\n" +
+                "MET\t2\t0\t384\t1\n" +
+                "MET\t2\t2\t192\t1\n" +
+                "MET\t2\t4\t128\t1\n" +
+                "MET\t2\t7\t96\t1\n" +
+                "MET\t2\t11\t64\t64\n" +
+                "MET\t3\t0\t4\t4\n" +
+                "MET\t42\t0\t8\t7\n" +
+                "MET\t42\t336\t8\t9\n" +
+                "MET\t44\t0\t4\t4\n", out ugc);
+
+            // The Arcahv tuplet run still collapses to its terminal meter.
+            Assert.Contains("@BEAT\t2\t64\t64", ugc);
+            // Real sequential meters are preserved as separate bars: bar 42 is
+            // 7/8, and the 9/8 starting at grid offset 336 becomes bar 43.
+            Assert.Contains("@BEAT\t42\t7\t8", ugc);
+            Assert.Contains("@BEAT\t43\t9\t8", ugc);
+            Assert.DoesNotContain("@BEAT\t42\t9\t8", ugc);
+        }
+
+        [Fact]
         public void StpNotEmittedAsBeatOrMeasureLength()
         {
             // STP (stop) events must not leak into @BEAT or change measure
